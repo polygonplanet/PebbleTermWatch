@@ -1,7 +1,9 @@
 {
     "versionLabel": "1.0.0",
     "uuid": "4e36e415-af6f-4cf9-a7f5-bf709e69c68c",
-    "appKeys": {},
+    "appKeys": {
+        "timezoneOffset": 0
+    },
     "longName": "Pebble Term Watch",
     "versionCode": 1,
     "capabilities": [

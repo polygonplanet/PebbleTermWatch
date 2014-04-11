@@ -3,7 +3,7 @@
  *
  * pebble watchface for sdk 2
  *
- * Watchface based and special thanks to:
+ * Special thanks to the following based watchfaces:
  *  CMD Time Typed: https://github.com/C-D-Lewis/cmd-time-typed
  *  91 Dub v2.0: https://github.com/orviwan/91-Dub-v2.0
  */
@@ -11,6 +11,10 @@
 
 #define TYPE_DELTA 200
 #define PROMPT_DELTA 1000
+#define SETTINGS_KEY 262 // or 0?
+
+static AppSync sync;
+static uint8_t sync_buffer[64];
 
 // Layers
 static Window *window;
@@ -25,33 +29,16 @@ static InverterLayer *prompt_layer;
 
 static AppTimer *timer;
 
-#define SETTINGS_KEY 99
-
 typedef struct persist {
-	int Blink;
-  int Invert;
-  int BluetoothVibe;
-  int HourlyVibe;
-  int BrandingMask;
-  int TimezoneOffset;
+  int16_t TimezoneOffset;
 } __attribute__((__packed__)) persist;
 
 persist settings = {
-  .Blink = 1,
-  .Invert = 0,
-  .BluetoothVibe = 1,
-  .HourlyVibe = 0,
-  .BrandingMask = 1,
-  .TimezoneOffset = 32400 // 32400 = ja GMT+0900 = 9*60*60
+  .TimezoneOffset = 0
 };
 
 enum {
-  BLINK_KEY = 0x0,
-  INVERT_KEY = 0x1,
-  BLUETOOTHVIBE_KEY = 0x2,
-  HOURLYVIBE_KEY = 0x3,
-  BRANDING_MASK_KEY = 0x4,
-  TIMEZONEOFFSET_KEY = 0x5
+  TIMEZONEOFFSET_KEY = 0
 };
 
 static bool appStarted = false;
@@ -133,13 +120,13 @@ void change_background() {
   gbitmap_destroy(background_image);
   gbitmap_destroy(branding_mask_image);
 
-  if (settings.Invert) {
-    background_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BACKGROUND_INVERT);
-    branding_mask_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BRANDING_MASK_INVERT);
-  } else {
+  //if (settings.Invert) {
+  //  background_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BACKGROUND_INVERT);
+  //  branding_mask_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BRANDING_MASK_INVERT);
+  //} else {
     background_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BACKGROUND);
     branding_mask_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BRANDING_MASK);
-  }
+  //}
   bitmap_layer_set_bitmap(branding_mask_layer, branding_mask_image);
   layer_mark_dirty(bitmap_layer_get_layer(branding_mask_layer));
 
@@ -204,7 +191,7 @@ void battery_layer_update_callback(Layer *me, GContext* ctx) {
 
 // bluetooth
 static void toggle_bluetooth_icon(bool connected) {
-  if (appStarted && !connected && settings.BluetoothVibe) {
+  if (appStarted && !connected/* && settings.BluetoothVibe*/) {
     // vibe!
     vibes_long_pulse();
   }
@@ -213,6 +200,21 @@ static void toggle_bluetooth_icon(bool connected) {
 
 void bluetooth_connection_callback(bool connected) {
   toggle_bluetooth_icon(connected);
+}
+
+
+// Callback for settings
+static void handle_tick(struct tm *tick_time, TimeUnits units_changed);
+
+static void sync_tuple_changed_callback(const uint32_t key,
+                                        const Tuple* new_tuple,
+                                        const Tuple* old_tuple,
+                                        void* context) {
+  switch (key) {
+    case TIMEZONEOFFSET_KEY:
+      settings.TimezoneOffset = new_tuple->value->int16;
+      break;
+  }
 }
 
 
@@ -232,7 +234,7 @@ static void set_time(struct tm *t) {
 
   // unix time
   // Pebble SDK 2 can't get timezone offset?
-  snprintf(time_buffer, sizeof("XXXXXXXXXXXXXXX"), "%u", (unsigned)time(NULL) - settings.TimezoneOffset);
+  snprintf(time_buffer, sizeof("XXXXXXXXXXXXXXX"), "%u", (unsigned)time(NULL) + settings.TimezoneOffset);
   text_layer_set_text(time_layer, time_buffer);
 }
 
@@ -484,6 +486,11 @@ static void init(void) {
   }
   window_layer = window_get_root_layer(window);
 
+  const int inbound_size = 64;
+  const int outbound_size = 64;
+  app_message_open(inbound_size, outbound_size);
+  persist_read_data(SETTINGS_KEY, &settings, sizeof(settings));
+
   background_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BACKGROUND);
   background_layer = bitmap_layer_create(layer_get_frame(window_layer));
 
@@ -528,9 +535,10 @@ static void init(void) {
   };
   branding_mask_layer = bitmap_layer_create(framemask);
   layer_add_child(window_layer, bitmap_layer_get_layer(branding_mask_layer));
-  branding_mask_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BRANDING_MASK/*_INVERT*/);
+  branding_mask_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BRANDING_MASK);
   bitmap_layer_set_bitmap(branding_mask_layer, branding_mask_image);
-  layer_set_hidden(bitmap_layer_get_layer(branding_mask_layer), !settings.BrandingMask);
+  //XXX:
+  layer_set_hidden(bitmap_layer_get_layer(branding_mask_layer), /*!settings.BrandingMask*/true);
 
   layer_add_child(window_layer, bitmap_layer_get_layer(bluetooth_layer));
   layer_add_child(window_layer, bitmap_layer_get_layer(battery_image_layer));
@@ -547,6 +555,14 @@ static void init(void) {
   toggle_bluetooth_icon(bluetooth_connection_service_peek());
   update_battery(battery_state_service_peek());
 
+  Tuplet initial_values[] = {
+    TupletInteger(TIMEZONEOFFSET_KEY, settings.TimezoneOffset)
+  };
+
+  app_sync_init(&sync, sync_buffer, sizeof(sync_buffer),
+                initial_values, ARRAY_LENGTH(initial_values),
+                sync_tuple_changed_callback, NULL, NULL);
+
   appStarted = true;
 
   bluetooth_connection_service_subscribe(bluetooth_connection_callback);
@@ -556,6 +572,8 @@ static void init(void) {
 }
 
 static void deinit(void) {
+  app_sync_deinit(&sync);
+
   bluetooth_connection_service_unsubscribe();
   battery_state_service_unsubscribe();
   tick_timer_service_unsubscribe();
