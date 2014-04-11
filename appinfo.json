@@ -17,15 +17,15 @@
     "resources": {
         "media": [
             {
-                "type": "png",
-                "name": "IMAGE_BLUETOOTH",
-                "file": "images/icon_bluetooth.png"
-            },
-            {
                 "menuIcon": true,
                 "type": "png",
                 "name": "IMAGE_APP_ICON",
-                "file": "images/pebble-term-watch-screenshot-24x28.png"
+                "file": "images/icon_pebble_term_watch.png"
+            },
+            {
+                "type": "png",
+                "name": "IMAGE_BLUETOOTH",
+                "file": "images/icon_bluetooth.png"
             },
             {
                 "type": "png",
