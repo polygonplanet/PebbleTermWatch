@@ -11,7 +11,8 @@
 
 #define TYPE_DELTA 200
 #define PROMPT_DELTA 1000
-#define SETTINGS_KEY 262 // or 0?
+//XXX: Starts with 0?
+#define SETTINGS_KEY 262
 
 static AppSync sync;
 static uint8_t sync_buffer[64];
@@ -80,9 +81,10 @@ const int TINY_IMAGE_RESOURCE_IDS[] = {
 // Buffers
 static char date_buffer[] = "XXXX-XX-XX",
             hour_buffer[] = "XX:XX:XX",
+            //TODO: Display day ("Sun", "Mon" ...)
             //day_buffer[] = "XXX",
+            // unixtime ("0" - "2147483647")
             time_buffer[] = "XXXXXXXXXXXXXXX";
-            //time_buffer[] = "2147483647";
 
 // State
 static int state = 0;
