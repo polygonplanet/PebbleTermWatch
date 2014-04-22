@@ -58,45 +58,48 @@
         .
       </div>
     </div>
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.10.1/jquery.min.js"></script>
     <script src="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/js/bootstrap.min.js"></script>
 
     <script>
       var store = {
         bluetoothVibe: {
-          value: true,
+          value: 1,
+          get: function(el) {
+            return el.prop('checked') ? 1 : 0;
+          },
           set: function(el, v) {
             el.prop('checked', !!v);
           },
-          get: function(el) {
-            return el.prop('checked') ? 1 : 0;
+          fix: function(v) {
+            return v - 0 ? 1 : 0;
           }
         },
         typingAnimation: {
-          value: true,
+          value: 1,
+          get: function(el) {
+            return el.prop('checked') ? 1 : 0;
+          },
           set: function(el, v) {
             el.prop('checked', !!v);
           },
-          get: function(el) {
-            return el.prop('checked') ? 1 : 0;
+          fix: function(v) {
+            return v - 0 ? 1 : 0;
           }
         },
-        timezoneOffset: (function() {
+        timezoneOffset: {
+          value: new Date().getTimezoneOffset() * 60,
+          get: function(el) {
+            return this.fix(el.val());
+          },
+          set: function(el, v) {
+            el.val(this.fix(v));
+          },
           // timezone offset limit (-1440 * 60 to 1440 * 60)
-          var fix = function(v) {
+          fix: function(v) {
             return Math.max(-1440 * 60, Math.min(1440 * 60, v - 0)) || 0;
-          };
-
-          return {
-            value: new Date().getTimezoneOffset() * 60,
-            set: function(el, v) {
-              el.val(fix(v));
-            },
-            get: function(el) {
-              return fix(el.val());
-            }
-          };
-        }())
+          }
+        }
       };
 
       $(document).ready(function() {
@@ -105,7 +108,7 @@
           var field = store[key];
 
           if (item != null) {
-            field.value = item;
+            field.value = field.fix(item);
           }
 
           field.set($('#' + key), field.value);
@@ -114,7 +117,8 @@
 
         var closeWin = function(data) {
           var uri = 'pebblejs://close#' + JSON.stringify(data);
-          window.location.href = uri;
+          console.log(uri);
+          //window.location.href = uri;
         };
 
 
@@ -123,7 +127,7 @@
 
           var values = Object.keys(store).reduce(function(o, k) {
             if (cancel) {
-              o[k] = store[k].get(store[k].value);
+              o[k] = store[k].value;
             } else {
               o[k] = store[k].get($('#' + k));
             }
