@@ -119,9 +119,15 @@
 
 
         $('.button-cancel, .button-submit').on('click', function(ev) {
+          var cancel = $(this).hasClass('button-cancel');
+
           var values = Object.keys(store).reduce(function(o, k) {
-            o[k] = store[k].get($('#' + k));
-            localStorage.setItem(k, o[k]);
+            if (cancel) {
+              o[k] = store[k].get(store[k].value);
+            } else {
+              o[k] = store[k].get($('#' + k));
+              localStorage.setItem(k, o[k]);
+            }
             return o;
           }, {});
 
