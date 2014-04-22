@@ -1,0 +1,21 @@
+.container h2 {
+  margin-bottom: 1em;
+}
+
+.container .group-buttons {
+  text-align: center;
+}
+
+.container .settings-timezone {
+  width: 150px;
+  margin-top: 1em;
+}
+
+.container .group-buttons .btn {
+  width: 100px;
+}
+
+.container .group-buttons .button-submit {
+  margin-left: 20px;
+}
+

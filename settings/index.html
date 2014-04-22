@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Pebble Term Watch - Settings</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <link href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap.min.css"
+    rel="stylesheet">
+    <link href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"
+    rel="stylesheet">
+    <link href="css/style7329764f1a.css" rel="stylesheet">
+  </head>
+
+  <body>
+    <div class="container">
+      <h2>
+        Pebble Term Watch
+      </h2>
+      <div class="form-group">
+        <label>
+          Bluetooth disconnect vibration:
+        </label>
+        <label class="checkbox">
+          <input id="bluetoothVibe" type="checkbox">
+          ON
+        </label>
+      </div>
+      <div class="form-group">
+        <label>
+          Typing animation:
+        </label>
+        <label class="checkbox">
+          <input id="typingAnimation" type="checkbox">
+          ON
+        </label>
+      </div>
+      <div class="form-group">
+        <label>
+          Timezone offset seconds (Optional to fix unixtime):
+        </label>
+        <input class="form-control settings-timezone" id="timezoneOffset"
+        type="text">
+      </div>
+      <div class="group-buttons">
+        <button type="button" class="btn button-cancel btn-default">
+          Cancel
+        </button>
+        <button type="button" class="btn button-submit btn-primary">
+          OK
+        </button>
+      </div>
+      <hr>
+      <div>
+        Pebble Term Watch by
+        <a href="https://github.com/polygonplanet">polygon planet</a>
+        .
+      </div>
+    </div>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+    <script src="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/js/bootstrap.min.js"></script>
+
+    <script>
+      var store = {
+        bluetoothVibe: {
+          value: true,
+          set: function(el, v) {
+            el.prop('checked', !!v);
+          },
+          get: function(el) {
+            return el.prop('checked') ? 1 : 0;
+          }
+        },
+        typingAnimation: {
+          value: true,
+          set: function(el, v) {
+            el.prop('checked', !!v);
+          },
+          get: function(el) {
+            return el.prop('checked') ? 1 : 0;
+          }
+        },
+        timezoneOffset: (function() {
+          // timezone offset limit (-1440 to 1440)
+          var fix = function(v) {
+            return Math.max(-1440, Math.min(1440, v - 0)) || 0;
+          };
+
+          return {
+            value: new Date().getTimezoneOffset() * 60,
+            set: function(el, v) {
+              el.val(fix(v));
+            },
+            get: function(el) {
+              return fix(el.val());
+            }
+          };
+        }())
+      };
+
+      $(document).ready(function() {
+        Object.keys(store).forEach(function(key) {
+          var item = localStorage.getItem(key);
+          var field = store[key];
+
+          if (item != null) {
+            field.value = item;
+          }
+
+          field.set($('#' + key), field.value);
+        });
+
+
+        var closeWin = function(data) {
+          var uri = 'pebblejs://close#' + JSON.stringify(data);
+          window.location.href = uri;
+        };
+
+
+        $('.button-cancel, .button-submit').on('click', function(ev) {
+          var values = 'bluetoothVibe,typingAnimation,timezoneOffset'.split(',').reduce(function(o, k) {
+            o[k] = store[k].get($('#' + k));
+            localStorage.setItem(k, o[k]);
+            return o;
+          }, {});
+
+          closeWin(values);
+          ev.preventDefault();
+        });
+      });
+    </script>
+
+  </body>
+</html>
