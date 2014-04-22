@@ -40,8 +40,12 @@
         <label>
           Timezone offset seconds (Optional to fix unixtime):
         </label>
-        <input class="form-control settings-timezone" id="timezoneOffset"
-        type="text">
+        <div class="timezone-container">
+          <input class="form-control settings-timezone pull-left" id="timezoneOffset" type="text">
+          <button type="button" class="btn btn-info button-timezone-default">
+            Default
+          </button>
+        </div>
       </div>
       <div class="group-buttons">
         <button type="button" class="btn button-cancel btn-default">
@@ -136,6 +140,11 @@
 
           closeWin(values);
           ev.preventDefault();
+        });
+
+
+        $('.button-timezone-default').on('click', function(e) {
+          $('#timezoneOffset').val(new Date().getTimezoneOffset() * 60);
         });
       });
     </script>
