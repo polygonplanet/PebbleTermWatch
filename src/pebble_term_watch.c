@@ -187,7 +187,8 @@ static void update_battery(BatteryChargeState charge_state) {
   layer_set_hidden(bitmap_layer_get_layer(battery_layer), charge_state.is_charging);
   change_battery_icon(charge_state.is_charging);
 
-  for (int i = 0; i < TOTAL_BATTERY_PERCENT_DIGITS; ++i) {
+  layer_set_hidden(bitmap_layer_get_layer(battery_percent_layers[0]), true);
+  for (int i = 1; i < TOTAL_BATTERY_PERCENT_DIGITS; ++i) {
     layer_set_hidden(bitmap_layer_get_layer(battery_percent_layers[i]), false);
   }
 
@@ -229,8 +230,6 @@ void bluetooth_connection_callback(bool connected) {
 
 
 // Callback for settings
-static void handle_tick(struct tm *tick_time, TimeUnits units_changed);
-
 static void sync_tuple_changed_callback(const uint32_t key,
                                         const Tuple* new_tuple,
                                         const Tuple* old_tuple,
@@ -302,12 +301,10 @@ static void set_time_anim() {
       break;
     case 7:
       text_layer_set_text(date_label, "pebble>date +%F");
-      layer_add_child(window_get_root_layer(window), text_layer_get_layer(date_layer));
       timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
       break;
     case 8:
-      //text_layer_set_text(date_label, "pebble>date +%F");
-      //layer_add_child(window_get_root_layer(window), text_layer_get_layer(date_layer));
+      layer_add_child(window_get_root_layer(window), text_layer_get_layer(date_layer));
       text_layer_set_text(hour_label, "pebble>");
       timer = app_timer_register(10 * TYPE_DELTA, set_time_anim, 0);
       break;
@@ -340,7 +337,6 @@ static void set_time_anim() {
       timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
       break;
     case 16:
-      //text_layer_set_text(hour_label, "pebble>date +%T");
       layer_add_child(window_get_root_layer(window), text_layer_get_layer(hour_layer));
       text_layer_set_text(time_label, "pebble>");
       timer = app_timer_register(10 * TYPE_DELTA, set_time_anim, 0);
@@ -370,7 +366,6 @@ static void set_time_anim() {
       timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
       break;
     case 23:
-      //text_layer_set_text(time_label, "pebble>date +%s");
       layer_add_child(window_get_root_layer(window), text_layer_get_layer(time_layer));
       text_layer_set_text(prompt_label, "pebble>");
       prompt_visible = true;
@@ -493,6 +488,10 @@ static void window_unload(Window *window) {
   // time
   text_layer_destroy(time_label);
   text_layer_destroy(time_layer);
+
+  // hour
+  text_layer_destroy(hour_label);
+  text_layer_destroy(hour_layer);
 
   // Prompt
   text_layer_destroy(prompt_label);

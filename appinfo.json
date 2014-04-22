@@ -1,5 +1,5 @@
 {
-    "versionLabel": "1.0.1",
+    "versionLabel": "1.0.2",
     "appKeys": {
         "timezoneOffset": 0
     },
@@ -112,7 +112,8 @@
     "versionCode": 1,
     "uuid": "4e36e415-af6f-4cf9-a7f5-bf709e69c68c",
     "capabilities": [
-        ""
+        "location",
+        "configurable"
     ],
     "watchapp": {
         "watchface": true
