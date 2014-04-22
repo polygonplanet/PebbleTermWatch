@@ -31,18 +31,29 @@ static InverterLayer *prompt_layer;
 static AppTimer *timer;
 
 typedef struct persist {
+  uint8_t BluetoothVibe;
+  uint8_t TypingAnimation;
   int16_t TimezoneOffset;
 } __attribute__((__packed__)) persist;
 
 persist settings = {
+  .BluetoothVibe = 1,
+  .TypingAnimation = 1,
   .TimezoneOffset = 0
 };
 
 enum {
-  TIMEZONEOFFSET_KEY = 0
+  BLUETOOTH_VIBE_KEY,
+  TYPING_ANIMATION_KEY,
+  TIMEZONE_OFFSET_KEY
 };
 
 static bool appStarted = false;
+
+#define INITTIME_PROMPT_LIMIT 10
+static bool firstRun = true;
+static int initTime = 0;
+static int secondsSync = 0;
 
 // bluetooth
 static GBitmap *bluetooth_image;
@@ -123,13 +134,10 @@ void change_background() {
   gbitmap_destroy(background_image);
   gbitmap_destroy(branding_mask_image);
 
-  //if (settings.Invert) {
-  //  background_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BACKGROUND_INVERT);
-  //  branding_mask_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BRANDING_MASK_INVERT);
-  //} else {
-    background_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BACKGROUND);
-    branding_mask_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BRANDING_MASK);
-  //}
+  //XXX: settings.Invert
+  background_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BACKGROUND);
+  branding_mask_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BRANDING_MASK);
+
   bitmap_layer_set_bitmap(branding_mask_layer, branding_mask_image);
   layer_mark_dirty(bitmap_layer_get_layer(branding_mask_layer));
 
@@ -217,8 +225,8 @@ void battery_layer_update_callback(Layer *me, GContext* ctx) {
 
 // bluetooth
 static void toggle_bluetooth_icon(bool connected) {
-  if (appStarted && !connected/* && settings.BluetoothVibe*/) {
-    // vibe!
+  if (appStarted && !connected && settings.BluetoothVibe) {
+    // handle bluetooth disconnect
     vibes_long_pulse();
   }
   layer_set_hidden(bitmap_layer_get_layer(bluetooth_layer), !connected);
@@ -228,14 +236,19 @@ void bluetooth_connection_callback(bool connected) {
   toggle_bluetooth_icon(connected);
 }
 
-
 // Callback for settings
 static void sync_tuple_changed_callback(const uint32_t key,
                                         const Tuple* new_tuple,
                                         const Tuple* old_tuple,
                                         void* context) {
   switch (key) {
-    case TIMEZONEOFFSET_KEY:
+    case BLUETOOTH_VIBE_KEY:
+      settings.BluetoothVibe = new_tuple->value->uint8;
+      break;
+    case TYPING_ANIMATION_KEY:
+      settings.TypingAnimation = new_tuple->value->uint8;
+      break;
+    case TIMEZONE_OFFSET_KEY:
       settings.TimezoneOffset = new_tuple->value->int16;
       break;
   }
@@ -256,7 +269,7 @@ static void set_time(struct tm *t) {
   strftime(date_buffer, sizeof("XXXX-XX-XX"), "%Y-%m-%d", t);
   text_layer_set_text(date_layer, date_buffer);
 
-  // unix time
+  // unixtime
   // Pebble SDK 2 can't get timezone offset?
   snprintf(time_buffer, sizeof("XXXXXXXXXXXXXXX"), "%u", (unsigned)time(NULL) + settings.TimezoneOffset);
   text_layer_set_text(time_layer, time_buffer);
@@ -266,6 +279,7 @@ static void set_time_anim() {
   // Time structures -- Cannot be branch declared
   time_t temp;
   struct tm *t;
+  bool timed = false;
 
   // frame animation
   switch (state) {
@@ -273,6 +287,7 @@ static void set_time_anim() {
       temp = time(NULL);
       t = localtime(&temp);
       set_time(t);
+      timed = true;
       timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
       break;
     case 1:
@@ -339,7 +354,13 @@ static void set_time_anim() {
     case 16:
       layer_add_child(window_get_root_layer(window), text_layer_get_layer(hour_layer));
       text_layer_set_text(time_label, "pebble>");
-      timer = app_timer_register(10 * TYPE_DELTA, set_time_anim, 0);
+
+      if (firstRun && secondsSync == 0 && !settings.TypingAnimation) {
+        secondsSync = 10;
+        timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
+      } else {
+        timer = app_timer_register(10 * TYPE_DELTA, set_time_anim, 0);
+      }
       break;
     case 17:
       text_layer_set_text(time_label, "pebble>d");
@@ -380,8 +401,36 @@ static void set_time_anim() {
         prompt_visible = true;
         layer_add_child(window_get_root_layer(window), inverter_layer_get_layer(prompt_layer));
       }
+
+      if (firstRun && ++initTime > INITTIME_PROMPT_LIMIT) {
+        firstRun = false;
+        initTime = 0;
+      }
       timer = app_timer_register(PROMPT_DELTA, set_time_anim, 0);
       break;
+  }
+
+  // disabled animation
+  if (!settings.TypingAnimation && state > 16) {
+    if (!timed) {
+      temp = time(NULL);
+      t = localtime(&temp);
+      set_time(t);
+    }
+    layer_remove_from_parent(text_layer_get_layer(date_layer));
+    layer_add_child(window_get_root_layer(window), text_layer_get_layer(date_layer));
+    if (state > 16) {
+      layer_remove_from_parent(text_layer_get_layer(hour_layer));
+      layer_add_child(window_get_root_layer(window), text_layer_get_layer(hour_layer));
+      if (state > 23) {
+        layer_remove_from_parent(text_layer_get_layer(time_layer));
+        layer_add_child(window_get_root_layer(window), text_layer_get_layer(time_layer));
+      }
+    }
+    if (secondsSync > 0) {
+      secondsSync--;
+      return;
+    }
   }
   state++;
 }
@@ -389,23 +438,45 @@ static void set_time_anim() {
 static void tick_handler(struct tm *t, TimeUnits units_changed) {
   if (timer != NULL) {
     app_timer_cancel(timer);
+
+    //XXX: delay for typing animation
+    if (firstRun && state < 26) {
+      timer = app_timer_register(PROMPT_DELTA, set_time_anim, 0);
+      return;
+    }
   }
 
-  // Start anim cycle
-  state = 0;
+  //TODO: display seconds
   timer = app_timer_register(PROMPT_DELTA, set_time_anim, 0);
+  if (!firstRun && !settings.TypingAnimation) {
+    if (state > 25) {
+      state = 25;
 
-  // Blank before time change
-  text_layer_set_text(date_label, "pebble>");
-  layer_remove_from_parent(text_layer_get_layer(date_layer));
-  text_layer_set_text(hour_label, "");
-  layer_remove_from_parent(text_layer_get_layer(hour_layer));
-  text_layer_set_text(time_label, "");
-  layer_remove_from_parent(text_layer_get_layer(time_layer));
-  text_layer_set_text(prompt_label, "");
+      layer_remove_from_parent(text_layer_get_layer(date_layer));
+      layer_add_child(window_get_root_layer(window), text_layer_get_layer(date_layer));
+      layer_remove_from_parent(text_layer_get_layer(hour_layer));
+      layer_add_child(window_get_root_layer(window), text_layer_get_layer(hour_layer));
+      layer_remove_from_parent(text_layer_get_layer(time_layer));
+      layer_add_child(window_get_root_layer(window), text_layer_get_layer(time_layer));
 
-  layer_remove_from_parent(inverter_layer_get_layer(prompt_layer));
-  prompt_visible = false;
+      prompt_visible = false;
+    }
+  } else {
+    // Start anim cycle
+    state = 0;
+
+    // Blank before time change
+    text_layer_set_text(date_label, "pebble>");
+    layer_remove_from_parent(text_layer_get_layer(date_layer));
+    text_layer_set_text(hour_label, "");
+    layer_remove_from_parent(text_layer_get_layer(hour_layer));
+    text_layer_set_text(time_label, "");
+    layer_remove_from_parent(text_layer_get_layer(time_layer));
+    text_layer_set_text(prompt_label, "");
+
+    layer_remove_from_parent(inverter_layer_get_layer(prompt_layer));
+    prompt_visible = false;
+  }
 
   // Change time display
   set_time(t);
@@ -414,7 +485,7 @@ static void tick_handler(struct tm *t, TimeUnits units_changed) {
 // Window Lifecycle
 
 static void window_load(Window *window) {
-  // Font
+  // font
   ResHandle font_handle = resource_get_handle(RESOURCE_ID_FONT_LUCIDA_13);
 
   // date
@@ -506,7 +577,6 @@ static void init(void) {
 
   window = window_create();
   if (window == NULL) {
-    //APP_LOG(APP_LOG_LEVEL_DEBUG, "OOM: couldn't allocate window");
     return;
   }
   window_layer = window_get_root_layer(window);
@@ -562,8 +632,8 @@ static void init(void) {
   layer_add_child(window_layer, bitmap_layer_get_layer(branding_mask_layer));
   branding_mask_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BRANDING_MASK);
   bitmap_layer_set_bitmap(branding_mask_layer, branding_mask_image);
-  //XXX:
-  layer_set_hidden(bitmap_layer_get_layer(branding_mask_layer), /*!settings.BrandingMask*/true);
+  //XXX: mask
+  layer_set_hidden(bitmap_layer_get_layer(branding_mask_layer), true);
 
   layer_add_child(window_layer, bitmap_layer_get_layer(bluetooth_layer));
   layer_add_child(window_layer, bitmap_layer_get_layer(battery_image_layer));
@@ -581,7 +651,9 @@ static void init(void) {
   update_battery(battery_state_service_peek());
 
   Tuplet initial_values[] = {
-    TupletInteger(TIMEZONEOFFSET_KEY, settings.TimezoneOffset)
+    TupletInteger(BLUETOOTH_VIBE_KEY, settings.BluetoothVibe),
+    TupletInteger(TYPING_ANIMATION_KEY, settings.TypingAnimation),
+    TupletInteger(TIMEZONE_OFFSET_KEY, settings.TimezoneOffset)
   };
 
   app_sync_init(&sync, sync_buffer, sizeof(sync_buffer),

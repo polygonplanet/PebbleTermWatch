@@ -1,7 +1,9 @@
 {
     "versionLabel": "1.0.2",
     "appKeys": {
-        "timezoneOffset": 0
+        "typingAnimation": 1,
+        "timezoneOffset": 2,
+        "bluetoothVibe": 0
     },
     "resources": {
         "media": [
