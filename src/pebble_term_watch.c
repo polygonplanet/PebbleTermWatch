@@ -60,7 +60,8 @@ static BitmapLayer *background_layer;
 static GBitmap *branding_mask_image;
 static BitmapLayer *branding_mask_layer;
 
-#define TOTAL_BATTERY_PERCENT_DIGITS 3
+// XX% - XXX%
+#define TOTAL_BATTERY_PERCENT_DIGITS 4
 static GBitmap *battery_percent_image[TOTAL_BATTERY_PERCENT_DIGITS];
 static BitmapLayer *battery_percent_layers[TOTAL_BATTERY_PERCENT_DIGITS];
 
@@ -139,6 +140,7 @@ void change_background() {
 
 void change_battery_icon(bool charging) {
   gbitmap_destroy(battery_image);
+
   if (charging) {
     battery_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BATTERY_CHARGE);
   } else {
@@ -155,9 +157,30 @@ static void update_battery(BatteryChargeState charge_state) {
   if (batteryPercent == 100) {
     change_battery_icon(false);
     layer_set_hidden(bitmap_layer_get_layer(battery_layer), false);
+
     for (int i = 0; i < TOTAL_BATTERY_PERCENT_DIGITS; ++i) {
-      layer_set_hidden(bitmap_layer_get_layer(battery_percent_layers[i]), true);
+      layer_set_hidden(bitmap_layer_get_layer(battery_percent_layers[i]), false);
     }
+
+    set_container_image(&battery_percent_image[0],
+                        battery_percent_layers[0],
+                        TINY_IMAGE_RESOURCE_IDS[1],
+                        GPoint(93, 6));
+
+    set_container_image(&battery_percent_image[1],
+                        battery_percent_layers[1],
+                        TINY_IMAGE_RESOURCE_IDS[0],
+                        GPoint(99, 6));
+
+    set_container_image(&battery_percent_image[2],
+                        battery_percent_layers[2],
+                        TINY_IMAGE_RESOURCE_IDS[0],
+                        GPoint(105, 6));
+
+    set_container_image(&battery_percent_image[3],
+                        battery_percent_layers[3],
+                        TINY_IMAGE_RESOURCE_IDS[10],
+                        GPoint(111, 7));
     return;
   }
 
@@ -168,20 +191,20 @@ static void update_battery(BatteryChargeState charge_state) {
     layer_set_hidden(bitmap_layer_get_layer(battery_percent_layers[i]), false);
   }
 
-  set_container_image(&battery_percent_image[0],
-                      battery_percent_layers[0],
-                      TINY_IMAGE_RESOURCE_IDS[charge_state.charge_percent / 10],
-                      GPoint(99, 5));
-
   set_container_image(&battery_percent_image[1],
                       battery_percent_layers[1],
-                      TINY_IMAGE_RESOURCE_IDS[charge_state.charge_percent % 10],
-                      GPoint(105, 5));
+                      TINY_IMAGE_RESOURCE_IDS[charge_state.charge_percent / 10],
+                      GPoint(99, 6));
 
   set_container_image(&battery_percent_image[2],
                       battery_percent_layers[2],
+                      TINY_IMAGE_RESOURCE_IDS[charge_state.charge_percent % 10],
+                      GPoint(105, 6));
+
+  set_container_image(&battery_percent_image[3],
+                      battery_percent_layers[3],
                       TINY_IMAGE_RESOURCE_IDS[10],
-                      GPoint(111, 6));
+                      GPoint(111, 7));
 }
 
 void battery_layer_update_callback(Layer *me, GContext* ctx) {
@@ -279,11 +302,12 @@ static void set_time_anim() {
       break;
     case 7:
       text_layer_set_text(date_label, "pebble>date +%F");
+      layer_add_child(window_get_root_layer(window), text_layer_get_layer(date_layer));
       timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
       break;
     case 8:
-      text_layer_set_text(date_label, "pebble>date +%F");
-      layer_add_child(window_get_root_layer(window), text_layer_get_layer(date_layer));
+      //text_layer_set_text(date_label, "pebble>date +%F");
+      //layer_add_child(window_get_root_layer(window), text_layer_get_layer(date_layer));
       text_layer_set_text(hour_label, "pebble>");
       timer = app_timer_register(10 * TYPE_DELTA, set_time_anim, 0);
       break;
@@ -316,7 +340,7 @@ static void set_time_anim() {
       timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
       break;
     case 16:
-      text_layer_set_text(hour_label, "pebble>date +%T");
+      //text_layer_set_text(hour_label, "pebble>date +%T");
       layer_add_child(window_get_root_layer(window), text_layer_get_layer(hour_layer));
       text_layer_set_text(time_label, "pebble>");
       timer = app_timer_register(10 * TYPE_DELTA, set_time_anim, 0);
@@ -346,7 +370,7 @@ static void set_time_anim() {
       timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
       break;
     case 23:
-      text_layer_set_text(time_label, "pebble>date +%s");
+      //text_layer_set_text(time_label, "pebble>date +%s");
       layer_add_child(window_get_root_layer(window), text_layer_get_layer(time_layer));
       text_layer_set_text(prompt_label, "pebble>");
       prompt_visible = true;
@@ -513,7 +537,7 @@ static void init(void) {
   // bluetooth
   bluetooth_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BLUETOOTH);
   GRect frame3 = (GRect) {
-    .origin = { .x = 86, .y = 5 },
+    .origin = { .x = 80, .y = 5 },
     .size = bluetooth_image->bounds.size
   };
   bluetooth_layer = bitmap_layer_create(frame3);
@@ -522,7 +546,7 @@ static void init(void) {
   // battery
   battery_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BATTERY);
   GRect frame4 = (GRect) {
-    .origin = { .x = 121, .y = 5 },
+    .origin = { .x = 121, .y = 6 },
     .size = battery_image->bounds.size
   };
   battery_layer = bitmap_layer_create(frame4);
