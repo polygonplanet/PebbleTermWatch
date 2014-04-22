@@ -82,9 +82,9 @@
           }
         },
         timezoneOffset: (function() {
-          // timezone offset limit (-1440 to 1440)
+          // timezone offset limit (-1440 * 60 to 1440 * 60)
           var fix = function(v) {
-            return Math.max(-1440, Math.min(1440, v - 0)) || 0;
+            return Math.max(-1440 * 60, Math.min(1440 * 60, v - 0)) || 0;
           };
 
           return {
@@ -119,7 +119,7 @@
 
 
         $('.button-cancel, .button-submit').on('click', function(ev) {
-          var values = 'bluetoothVibe,typingAnimation,timezoneOffset'.split(',').reduce(function(o, k) {
+          var values = Object.keys(store).reduce(function(o, k) {
             o[k] = store[k].get($('#' + k));
             localStorage.setItem(k, o[k]);
             return o;
