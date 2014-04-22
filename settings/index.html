@@ -126,8 +126,8 @@
               o[k] = store[k].get(store[k].value);
             } else {
               o[k] = store[k].get($('#' + k));
-              localStorage.setItem(k, o[k]);
             }
+            localStorage.setItem(k, o[k]);
             return o;
           }, {});
 
