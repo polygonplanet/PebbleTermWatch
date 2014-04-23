@@ -1,6 +1,6 @@
 // Pebble Term Watch
 
-var SETTINGS_URL = 'http://polygonplanet.github.io/PebbleTermWatch/settings/';
+var SETTINGS_URL = 'http://polygonplanet.github.io/PebbleTermWatch/settings/index.html';
 
 var store = {
   bluetoothVibe: {
@@ -12,7 +12,7 @@ var store = {
       return (this.value = this.fix(v));
     },
     fix: function(v) {
-      return v ? 1 : 0;
+      return (v - 0) ? 1 : 0;
     }
   },
   typingAnimation: {
@@ -24,25 +24,24 @@ var store = {
       return (this.value = this.fix(v));
     },
     fix: function(v) {
-      return v ? 1 : 0;
+      return (v - 0) ? 1 : 0;
     }
   },
   timezoneOffset: {
     value: new Date().getTimezoneOffset() * 60,
     get: function() {
-      return this.fix(this.value);
+      return this.value;
     },
-    set: function(v) {
-      return (this.value = this.fix(v));
+    set: function() {
+      return this.value;
     },
-    // timezone offset limit (-1440 * 60 to 1440 * 60)
-    fix: function(v) {
-      return Math.max(-1440 * 60, Math.min(1440 * 60, v - 0)) || 0;
+    fix: function() {
+      return this.value;
     }
   }
 };
 
-var getMessage = function() {
+var getData = function() {
   return Object.keys(store).reduce(function(o, k) {
     return o[k] = store[k].get(), o;
   }, {});
@@ -59,18 +58,15 @@ var loadLocalData = function() {
     var item = localStorage.getItem(key);
     var field = store[key];
 
-    // CodeMirror warns (item != null)
     if (item !== null && item !== void 0) {
-      field.value = item;
+      field.set(item);
     }
-
-    field.set(field.value);
   });
 };
 
 Pebble.addEventListener('ready', function(e) {
   loadLocalData();
-  Pebble.sendAppMessage(getMessage());
+  Pebble.sendAppMessage(getData());
 });
 
 Pebble.addEventListener('showConfiguration', function(e) {
@@ -78,11 +74,9 @@ Pebble.addEventListener('showConfiguration', function(e) {
 });
 
 Pebble.addEventListener('webviewclosed', function(e) {
-  var data;
-
   if (e.response) {
-    data = JSON.parse(e.response);
-    saveLocalData(data);
-    Pebble.sendAppMessage(getMessage());
+    loadLocalData();
+    saveLocalData(JSON.parse(e.response));
+    Pebble.sendAppMessage(getData());
   }
 });

@@ -1,7 +1,7 @@
 /*
  * Pebble Term Watch
  *
- * pebble watchface for sdk 2
+ * Pebble watchface for SDK 2
  *
  * Special thanks to the following based watchfaces:
  *  CMD Time Typed: https://github.com/C-D-Lewis/cmd-time-typed

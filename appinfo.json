@@ -3,7 +3,7 @@
     "watchapp": {
         "watchface": true
     },
-    "versionLabel": "1.0.2",
+    "versionLabel": "1.0.3",
     "companyName": "polygon.planet.aqua@gmail.com",
     "capabilities": [
         "location",
