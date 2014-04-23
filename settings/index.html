@@ -83,6 +83,9 @@
       };
 
       $(document).ready(function() {
+        // remove old item
+        localStorage.removeItem('timezoneOffset');
+
         Object.keys(store).forEach(function(key) {
           var item = localStorage.getItem(key);
           var field = store[key];
