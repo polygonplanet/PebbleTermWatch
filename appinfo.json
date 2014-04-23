@@ -1,5 +1,17 @@
 {
+    "uuid": "4e36e415-af6f-4cf9-a7f5-bf709e69c68c",
+    "watchapp": {
+        "watchface": true
+    },
     "versionLabel": "1.0.2",
+    "companyName": "polygon.planet.aqua@gmail.com",
+    "capabilities": [
+        "location",
+        "configurable"
+    ],
+    "shortName": "Pebble Term",
+    "longName": "Pebble Term Watch",
+    "versionCode": 1,
     "appKeys": {
         "typingAnimation": 1,
         "timezoneOffset": 2,
@@ -9,117 +21,105 @@
         "media": [
             {
                 "type": "font",
-                "file": "fonts/lucida.ttf",
-                "name": "FONT_LUCIDA_13"
+                "name": "FONT_LUCIDA_13",
+                "file": "fonts/lucida.ttf"
             },
             {
                 "type": "png",
-                "file": "images/icon_battery.png",
-                "name": "IMAGE_BATTERY"
+                "name": "IMAGE_BATTERY",
+                "file": "images/icon_battery.png"
             },
             {
                 "type": "png",
-                "file": "images/icon_battery_charge.png",
-                "name": "IMAGE_BATTERY_CHARGE"
+                "name": "IMAGE_BATTERY_CHARGE",
+                "file": "images/icon_battery_charge.png"
             },
             {
                 "type": "png",
-                "file": "images/tiny_0.png",
-                "name": "IMAGE_TINY_0"
+                "name": "IMAGE_TINY_0",
+                "file": "images/tiny_0.png"
             },
             {
                 "type": "png",
-                "file": "images/tiny_1.png",
-                "name": "IMAGE_TINY_1"
+                "name": "IMAGE_TINY_1",
+                "file": "images/tiny_1.png"
             },
             {
                 "type": "png",
-                "file": "images/tiny_2.png",
-                "name": "IMAGE_TINY_2"
+                "name": "IMAGE_TINY_2",
+                "file": "images/tiny_2.png"
             },
             {
                 "type": "png",
-                "file": "images/tiny_3.png",
-                "name": "IMAGE_TINY_3"
+                "name": "IMAGE_TINY_3",
+                "file": "images/tiny_3.png"
             },
             {
                 "type": "png",
-                "file": "images/tiny_4.png",
-                "name": "IMAGE_TINY_4"
+                "name": "IMAGE_TINY_4",
+                "file": "images/tiny_4.png"
             },
             {
                 "type": "png",
-                "file": "images/tiny_5.png",
-                "name": "IMAGE_TINY_5"
+                "name": "IMAGE_TINY_5",
+                "file": "images/tiny_5.png"
             },
             {
                 "type": "png",
-                "file": "images/tiny_6.png",
-                "name": "IMAGE_TINY_6"
+                "name": "IMAGE_TINY_6",
+                "file": "images/tiny_6.png"
             },
             {
                 "type": "png",
-                "file": "images/tiny_7.png",
-                "name": "IMAGE_TINY_7"
+                "name": "IMAGE_TINY_7",
+                "file": "images/tiny_7.png"
             },
             {
                 "type": "png",
-                "file": "images/tiny_8.png",
-                "name": "IMAGE_TINY_8"
+                "name": "IMAGE_TINY_8",
+                "file": "images/tiny_8.png"
             },
             {
                 "type": "png",
-                "file": "images/tiny_9.png",
-                "name": "IMAGE_TINY_9"
+                "name": "IMAGE_TINY_9",
+                "file": "images/tiny_9.png"
             },
             {
                 "type": "png",
-                "file": "images/tiny_percent.png",
-                "name": "IMAGE_TINY_PERCENT"
+                "name": "IMAGE_TINY_PERCENT",
+                "file": "images/tiny_percent.png"
             },
             {
                 "type": "png",
-                "file": "images/branding-mask.png",
-                "name": "IMAGE_BRANDING_MASK"
+                "name": "IMAGE_BRANDING_MASK",
+                "file": "images/branding-mask.png"
             },
             {
                 "type": "png",
-                "file": "images/branding-mask-invert.png",
-                "name": "IMAGE_BRANDING_MASK_INVERT"
+                "name": "IMAGE_BRANDING_MASK_INVERT",
+                "file": "images/branding-mask-invert.png"
             },
             {
                 "type": "png",
-                "file": "images/background-image.png",
-                "name": "IMAGE_BACKGROUND"
+                "name": "IMAGE_BACKGROUND",
+                "file": "images/background-image.png"
             },
             {
                 "type": "png",
-                "file": "images/background-image-invert.png",
-                "name": "IMAGE_BACKGROUND_INVERT"
+                "name": "IMAGE_BACKGROUND_INVERT",
+                "file": "images/background-image-invert.png"
             },
             {
                 "type": "png",
-                "file": "images/icon_bluetooth.png",
-                "name": "IMAGE_BLUETOOTH"
+                "name": "IMAGE_BLUETOOTH",
+                "file": "images/icon_bluetooth.png"
             },
             {
                 "type": "png",
-                "file": "images/icon_pebble_term_watch_small.png",
+                "menuIcon": true,
                 "name": "IMAGE_APP_ICON",
-                "menuIcon": true
+                "file": "images/icon_pebble_term_watch_small.png"
             }
         ]
-    },
-    "longName": "Pebble Term Watch",
-    "versionCode": 1,
-    "uuid": "4e36e415-af6f-4cf9-a7f5-bf709e69c68c",
-    "capabilities": [
-        "location",
-        "configurable"
-    ],
-    "watchapp": {
-        "watchface": true
-    },
-    "shortName": "Pebble Term",
-    "companyName": "polygon.planet.aqua@gmail.com"
+    }
 }

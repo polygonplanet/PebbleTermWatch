@@ -71,7 +71,7 @@ static BitmapLayer *background_layer;
 static GBitmap *branding_mask_image;
 static BitmapLayer *branding_mask_layer;
 
-// XX% - XXX%
+// battery percent(XX% - XXX%)
 #define TOTAL_BATTERY_PERCENT_DIGITS 4
 static GBitmap *battery_percent_image[TOTAL_BATTERY_PERCENT_DIGITS];
 static BitmapLayer *battery_percent_layers[TOTAL_BATTERY_PERCENT_DIGITS];
@@ -95,7 +95,7 @@ static char date_buffer[] = "XXXX-XX-XX",
             hour_buffer[] = "XX:XX:XX",
             //TODO: Display day ("Sun", "Mon" ...)
             //day_buffer[] = "XXX",
-            // unixtime ("0" - "2147483647")
+            // unixtime ("0" - "2147483647"?)
             time_buffer[] = "XXXXXXXXXXXXXXX";
 
 // State

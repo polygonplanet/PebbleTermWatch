@@ -2,66 +2,57 @@
 
 var SETTINGS_URL = 'http://polygonplanet.github.io/PebbleTermWatch/settings/';
 
-var sendTimezoneToWatch = function() {
-  // Get the number of seconds to add to convert localtime to utc
-  var offsetSeconds = new Date().getTimezoneOffset() * 60;
-
-  console.log('offsetSeconds=' + offsetSeconds);
-  localStorage.setItem('timezoneOffset', offsetSeconds);
-
-  // Send it to the watch
-  Pebble.sendAppMessage({ timezoneOffset: offsetSeconds });
-};
-
 var store = {
   bluetoothVibe: {
-    value: true,
-    set: function(v) {
-      this.value = !!v;
-    },
+    value: 1,
     get: function() {
-      return this.value ? 1 : 0;
+      return this.fix(this.value);
+    },
+    set: function(v) {
+      return (this.value = this.fix(v));
+    },
+    fix: function(v) {
+      return v ? 1 : 0;
     }
   },
   typingAnimation: {
-    value: true,
-    set: function(v) {
-      this.value = !!v;
-    },
+    value: 1,
     get: function() {
-      return this.value ? 1 : 0;
+      return this.fix(this.value);
+    },
+    set: function(v) {
+      return (this.value = this.fix(v));
+    },
+    fix: function(v) {
+      return v ? 1 : 0;
     }
   },
-  timezoneOffset: (function() {
+  timezoneOffset: {
+    value: new Date().getTimezoneOffset() * 60,
+    get: function() {
+      return this.fix(this.value);
+    },
+    set: function(v) {
+      return (this.value = this.fix(v));
+    },
     // timezone offset limit (-1440 * 60 to 1440 * 60)
-    var fix = function(v) {
+    fix: function(v) {
       return Math.max(-1440 * 60, Math.min(1440 * 60, v - 0)) || 0;
-    };
-
-    return {
-      value: new Date().getTimezoneOffset() * 60,
-      set: function(v) {
-        this.value = fix(v);
-      },
-      get: function() {
-        return fix(this.value);
-      }
-    };
-  }())
+    }
+  }
 };
 
-
-var saveLocalData = function(data) {
+var getMessage = function() {
   return Object.keys(store).reduce(function(o, k) {
-    var field = store[k];
-
-    field.value = field.set(data[k]);
-    o[k] = store.get();
-    localStorage.setItem(k, o[k]);
-    return o;
+    return o[k] = store[k].get(), o;
   }, {});
 };
 
+var saveLocalData = function(data) {
+  Object.keys(store).forEach(function(key) {
+    localStorage.setItem(key, store[key].set(data[key]));
+  });
+};
 
 var loadLocalData = function() {
   Object.keys(store).forEach(function(key) {
@@ -77,10 +68,9 @@ var loadLocalData = function() {
   });
 };
 
-
 Pebble.addEventListener('ready', function(e) {
   loadLocalData();
-  sendTimezoneToWatch();
+  Pebble.sendAppMessage(getMessage());
 });
 
 Pebble.addEventListener('showConfiguration', function(e) {
@@ -92,6 +82,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
 
   if (e.response) {
     data = JSON.parse(e.response);
-    Pebble.sendAppMessage(saveLocalData(data));
+    saveLocalData(data);
+    Pebble.sendAppMessage(getMessage());
   }
 });
