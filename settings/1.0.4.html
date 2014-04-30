@@ -9,6 +9,13 @@
     <link href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css" rel="stylesheet">
     <link href="css/style7329764f1a.css" rel="stylesheet">
+    <style>
+    input[type=checkbox] {
+      -moz-transform: scale(1.5, 1.5);
+      -webkit-transform: scale(1.5, 1.5);
+      transform: scale(1.5, 1.5);
+    }
+    </style>
   </head>
 
   <body>
@@ -39,16 +46,14 @@
           Feed URL (Optional):
         </label>
         <div class="feedurl-container">
-          <input placeholder="http://www.example.com/feed/rss" id="feedUrl" class="form-control" type="text">
+          <input placeholder="http://www.example.com/feed/rss" id="feedUrl"
+                 class="form-control" type="text">
           <input id="feedEnabled" type="hidden" value="">
         </div>
       </div>
       <div class="submit-group group-buttons">
-        <button type="button" class="btn button-cancel btn-default">
-          Cancel
-        </button>
-        <button type="button" class="btn button-submit btn-primary">
-          OK
+        <button class="btn button-submit btn-primary btn-lg">
+          Save
         </button>
       </div>
       <hr>
@@ -145,11 +150,11 @@
         };
 
 
-        $('.button-cancel, .button-submit').on('click', function(ev) {
-          var cancel = $(this).hasClass('button-cancel');
-
+        $('.button-submit').on('click', function(ev) {
+          var cancel = false;
           var values = Object.keys(store).reduce(function(o, k) {
-            if (cancel) {
+
+          if (cancel) {
               o[k] = store[k].value;
             } else {
               o[k] = store[k].get($('#' + k));
@@ -160,6 +165,7 @@
 
           closeWin(values);
           ev.preventDefault();
+          ev.stopPropagation();
         });
       });
     </script>
