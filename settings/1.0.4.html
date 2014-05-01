@@ -145,8 +145,7 @@
 
 
         var closeWin = function(data) {
-          var uri = 'pebblejs://close#' + JSON.stringify(data);
-          window.location.href = encodeURIComponent(uri);
+          window.location.href = 'pebblejs://close#' + encodeURIComponent(JSON.stringify(data));
         };
 
 
