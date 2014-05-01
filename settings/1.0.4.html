@@ -145,7 +145,7 @@
       var params = {};
 
       var re = /[?&]+([^=&]+)=([^&]*)/g;
-      var uri = '' + window.location.href;
+      var uri = decodeURIComponent('' + window.location.href);
       var m;
 
       while ((m = re.exec(uri)) != null) {
