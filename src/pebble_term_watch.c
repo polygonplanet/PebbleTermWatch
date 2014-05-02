@@ -31,7 +31,7 @@ static InverterLayer *prompt_layer;
 
 static TextLayer *feed_label, *feed_layer;
 
-static AppTimer *timer, *feed_timer;
+static AppTimer *timer;
 
 typedef struct persist {
   uint8_t BluetoothVibe;
