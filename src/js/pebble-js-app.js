@@ -510,6 +510,8 @@ Feed.prototype = {
     var self = this;
     var index = 0;
 
+    title = this.format(title);
+
     this.lockMsg().then(function() {
       self.updateTitle('');
 
@@ -573,7 +575,7 @@ Feed.prototype = {
     this.sendTitle();
 
     return request(this.url).then(function(res) {
-      var title = self.format(self.parse(res));
+      var title = self.parse(res);
 
       self.stop = false;
       self.sendChunkedTitle(title);

@@ -12,6 +12,7 @@
 
 #define TYPE_DELTA (200)
 #define PROMPT_DELTA (1000)
+#define MARQUEE_DELTA (500)
 #define SETTINGS_KEY (262)
 
 static AppSync sync;
@@ -30,7 +31,7 @@ static InverterLayer *prompt_layer;
 
 static TextLayer *feed_label, *feed_layer;
 
-static AppTimer *timer;
+static AppTimer *timer, *feed_timer;
 
 typedef struct persist {
   uint8_t BluetoothVibe;
@@ -128,6 +129,9 @@ static int feed_lastindex;
 static bool feed_title_ready = false;
 static bool feed_title_sending = false;
 static bool can_fetch_feed = false;
+
+static bool feed_marquee_animating = false;
+static bool feed_marquee_animated = false;
 
 static int feed_wait_time = FEED_WAIT_TIME_LIMIT;
 static int feed_append_len = 0;
@@ -323,8 +327,11 @@ static void marquee_feed_title_reset(void) {
 
   if (feed_title_ready) {
     feed_index = 0;
+    feed_wait_time = FEED_WAIT_TIME_LIMIT;
+
     strncpy(feed_title, feed_buffer + feed_index, 17);
     text_layer_set_text(feed_layer, feed_title);
+    feed_marquee_animating = false;
   }
 }
 
@@ -335,6 +342,7 @@ static void marquee_feed_title(void) {
 
   if (feed_title_ready) {
     if (--feed_wait_time >= 0) {
+      feed_marquee_animating = false;
       return;
     }
 
@@ -343,11 +351,13 @@ static void marquee_feed_title(void) {
     if (++feed_index == feed_lastindex) {
       feed_index = 0;
       feed_wait_time = FEED_WAIT_TIME_LIMIT;
+      feed_marquee_animating = false;
     }
 
     if (feed_title_ready) {
       strncpy(feed_title, feed_buffer + feed_index, 17);
       text_layer_set_text(feed_layer, feed_title);
+      feed_marquee_animating = true;
     }
   }
 }
@@ -516,6 +526,16 @@ static void set_time_anim() {
       // Rest of the minute
       if (settings.FeedEnabled) {
         marquee_feed_title();
+
+        if (feed_marquee_animating) {
+          if (!feed_marquee_animated) {
+            feed_marquee_animated = true;
+          } else {
+            feed_marquee_animated = false;
+            timer = app_timer_register(MARQUEE_DELTA, set_time_anim, 0);
+            break;
+          }
+        }
       } else {
         if (prompt_visible) {
           prompt_visible = false;
@@ -531,7 +551,11 @@ static void set_time_anim() {
         firstRun = false;
       }
 
-      timer = app_timer_register(PROMPT_DELTA, set_time_anim, 0);
+      if (settings.FeedEnabled && feed_marquee_animating) {
+        timer = app_timer_register(MARQUEE_DELTA, set_time_anim, 0);
+      } else {
+        timer = app_timer_register(PROMPT_DELTA, set_time_anim, 0);
+      }
       break;
   }
 
@@ -655,8 +679,13 @@ static void sync_message_type(uint8_t msg_type) {
 
 static void term_sync_feed_title_append(const Tuple* new_tuple) {
   if (!feed_enabled_reload_locked) {
-
     if (!feed_title_sending) {
+      return;
+    }
+
+    if (feed_append_len > 0 && strlen(new_tuple->value->cstring) == 0) {
+      feed_append_len = FEED_MAX_TITLE_LEN;
+      term_sync_feed_end();
       return;
     }
 
