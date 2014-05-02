@@ -2,22 +2,22 @@
  * Pebble Term Watch
  *
  * Pebble watchface for SDK 2
+ * https://github.com/polygonplanet/PebbleTermWatch
  *
- * Special thanks to the following based watchfaces:
+ * based:
  *  CMD Time Typed: https://github.com/C-D-Lewis/cmd-time-typed
  *  91 Dub v2.0: https://github.com/orviwan/91-Dub-v2.0
  */
 #include <pebble.h>
 
-#define TYPE_DELTA 200
-#define PROMPT_DELTA 1000
-//XXX: Starts with 0?
-#define SETTINGS_KEY 262
+#define TYPE_DELTA (200)
+#define PROMPT_DELTA (1000)
+#define SETTINGS_KEY (262)
 
 static AppSync sync;
-static uint8_t sync_buffer[64];
+static uint8_t sync_buffer[128];
 
-// Layers
+// layers
 static Window *window;
 static Layer *window_layer;
 
@@ -28,38 +28,50 @@ static TextLayer *time_label, *time_layer,
 
 static InverterLayer *prompt_layer;
 
+static TextLayer *feed_label, *feed_layer;
+
 static AppTimer *timer;
 
 typedef struct persist {
   uint8_t BluetoothVibe;
   uint8_t TypingAnimation;
   int16_t TimezoneOffset;
+  uint8_t FeedEnabled;
 } __attribute__((__packed__)) persist;
 
 persist settings = {
   .BluetoothVibe = 1,
   .TypingAnimation = 1,
-  .TimezoneOffset = 0
+  .TimezoneOffset = 0,
+  .FeedEnabled = 0
 };
 
 enum {
-  BLUETOOTH_VIBE_KEY,
-  TYPING_ANIMATION_KEY,
-  TIMEZONE_OFFSET_KEY
+  BLUETOOTH_VIBE_KEY = 0x0,
+  TYPING_ANIMATION_KEY = 0x1,
+  TIMEZONE_OFFSET_KEY = 0x2,
+  FEED_ENABLED_KEY = 0x3,
+  FEED_URL_KEY = 0x4,
+  MSG_TYPE_KEY = 0x5,
+  FEED_TITLE_KEY = 0x6
 };
 
 static bool appStarted = false;
+static uint8_t prevFeedEnabled = (uint8_t)0;
 
-#define INITTIME_PROMPT_LIMIT 10
+#define INITTIME_PROMPT_LIMIT (30)
 static bool firstRun = true;
-static int initTime = 0;
-static int secondsSync = 0;
+static int initTime = 1;
+static int startTime = 0;
+static bool timerRegistered = false;
+
+static bool reset_next_tick = false;
 
 // bluetooth
 static GBitmap *bluetooth_image;
 static BitmapLayer *bluetooth_layer;
 
-// battery 
+// battery
 static uint8_t batteryPercent;
 static GBitmap *battery_image;
 static BitmapLayer *battery_image_layer;
@@ -71,8 +83,8 @@ static BitmapLayer *background_layer;
 static GBitmap *branding_mask_image;
 static BitmapLayer *branding_mask_layer;
 
-// battery percent(XX% - XXX%)
-#define TOTAL_BATTERY_PERCENT_DIGITS 4
+// battery percent (XX% - XXX%)
+#define TOTAL_BATTERY_PERCENT_DIGITS (4)
 static GBitmap *battery_percent_image[TOTAL_BATTERY_PERCENT_DIGITS];
 static BitmapLayer *battery_percent_layers[TOTAL_BATTERY_PERCENT_DIGITS];
 
@@ -90,11 +102,46 @@ const int TINY_IMAGE_RESOURCE_IDS[] = {
   RESOURCE_ID_IMAGE_TINY_PERCENT
 };
 
+// Feeds
+#define MSG_TYPE_FEED_FETCHED ((uint8_t)4)
+#define MSG_TYPE_FEED_TITLE_START ((uint8_t)5)
+#define MSG_TYPE_FEED_TITLE_END ((uint8_t)6)
+
+// time until to start marquee (seconds)
+#define FEED_WAIT_TIME_LIMIT (5)
+
+// time to request feed (seconds)
+#define FEED_WAIT_TIME_LIMIT_LONG (15)
+
+// maximum length to append feed title
+#define FEED_MAX_TITLE_LEN (140)
+#define FEED_TITLE_CHUNK_SIZE (17)
+#define FEED_TITLE_APPEND_MAX (8)
+
+static char feed_title[FEED_TITLE_CHUNK_SIZE];
+static char feed_prev_title[FEED_TITLE_CHUNK_SIZE];
+static char feed_buffer[192];
+
+static int feed_index;
+static int feed_lastindex;
+
+static bool feed_title_ready = false;
+static bool feed_title_sending = false;
+static bool can_fetch_feed = false;
+
+static int feed_wait_time = FEED_WAIT_TIME_LIMIT;
+static int feed_append_len = 0;
+
+static bool feed_fetched = false;
+static bool feed_enabled_initialized = false;
+
+static int feed_enabled_init_count = 2;
+static bool feed_enabled_reload_locked = false;
+
 // Buffers
+//TODO: Display day ("Sun", "Mon" ...)
 static char date_buffer[] = "XXXX-XX-XX",
             hour_buffer[] = "XX:XX:XX",
-            //TODO: Display day ("Sun", "Mon" ...)
-            //day_buffer[] = "XXX",
             // unixtime ("0" - "2147483647"?)
             time_buffer[] = "XXXXXXXXXXXXXXX";
 
@@ -153,7 +200,7 @@ void change_battery_icon(bool charging) {
     battery_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BATTERY_CHARGE);
   } else {
     battery_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BATTERY);
-  }  
+  }
   bitmap_layer_set_bitmap(battery_image_layer, battery_image);
   layer_mark_dirty(bitmap_layer_get_layer(battery_image_layer));
 }
@@ -220,13 +267,14 @@ void battery_layer_update_callback(Layer *me, GContext* ctx) {
   // draw the remaining battery percentage
   graphics_context_set_stroke_color(ctx, GColorWhite);
   graphics_context_set_fill_color(ctx, GColorWhite);
-  graphics_fill_rect(ctx, GRect(2, 2, ((batteryPercent / 100.0) * 11.0), 5), 0, GCornerNone);
+  graphics_fill_rect(ctx,
+    GRect(2, 2, ((batteryPercent / 100.0) * 11.0), 5), 0, GCornerNone);
 }
 
 // bluetooth
 static void toggle_bluetooth_icon(bool connected) {
   if (appStarted && !connected && settings.BluetoothVibe) {
-    // handle bluetooth disconnect
+    // vibe on bluetooth disconnect
     vibes_long_pulse();
   }
   layer_set_hidden(bitmap_layer_get_layer(bluetooth_layer), !connected);
@@ -236,27 +284,7 @@ void bluetooth_connection_callback(bool connected) {
   toggle_bluetooth_icon(connected);
 }
 
-// Callback for settings
-static void sync_tuple_changed_callback(const uint32_t key,
-                                        const Tuple* new_tuple,
-                                        const Tuple* old_tuple,
-                                        void* context) {
-  switch (key) {
-    case BLUETOOTH_VIBE_KEY:
-      settings.BluetoothVibe = new_tuple->value->uint8;
-      break;
-    case TYPING_ANIMATION_KEY:
-      settings.TypingAnimation = new_tuple->value->uint8;
-      break;
-    case TIMEZONE_OFFSET_KEY:
-      settings.TimezoneOffset = new_tuple->value->int16;
-      break;
-  }
-}
-
-
-// Time Lifecycle
-
+// time lifecycle
 static void set_time(struct tm *t) {
   // date
   if (clock_is_24h_style()) {
@@ -270,24 +298,65 @@ static void set_time(struct tm *t) {
   text_layer_set_text(date_layer, date_buffer);
 
   // unixtime
-  // Pebble SDK 2 can't get timezone offset?
-  snprintf(time_buffer, sizeof("XXXXXXXXXXXXXXX"), "%u", (unsigned)time(NULL) + settings.TimezoneOffset);
+  // Pebble SDK 2 can't get timezone offset(?)
+  snprintf(time_buffer, sizeof("XXXXXXXXXXXXXXX"), "%u",
+           (unsigned)time(NULL) + settings.TimezoneOffset);
   text_layer_set_text(time_layer, time_buffer);
 }
 
-static void set_time_anim() {
-  // Time structures -- Cannot be branch declared
-  time_t temp;
-  struct tm *t;
-  bool timed = false;
+static void update_time() {
+  // Time structures
+  time_t ts = time(NULL);
+  struct tm *t = localtime(&ts);
+  set_time(t);
 
+  if (startTime == 0) {
+    startTime = ts;
+  }
+}
+
+// feed animation
+static void marquee_feed_title_reset(void) {
+  if (!settings.FeedEnabled) {
+    return;
+  }
+
+  if (feed_title_ready) {
+    feed_index = 0;
+    strncpy(feed_title, feed_buffer + feed_index, 17);
+    text_layer_set_text(feed_layer, feed_title);
+  }
+}
+
+static void marquee_feed_title(void) {
+  if (!settings.FeedEnabled || feed_enabled_reload_locked) {
+    return;
+  }
+
+  if (feed_title_ready) {
+    if (--feed_wait_time >= 0) {
+      return;
+    }
+
+    feed_wait_time = 0;
+
+    if (++feed_index == feed_lastindex) {
+      feed_index = 0;
+      feed_wait_time = FEED_WAIT_TIME_LIMIT;
+    }
+
+    if (feed_title_ready) {
+      strncpy(feed_title, feed_buffer + feed_index, 17);
+      text_layer_set_text(feed_layer, feed_title);
+    }
+  }
+}
+
+static void set_time_anim() {
   // frame animation
   switch (state) {
     case 0:
-      temp = time(NULL);
-      t = localtime(&temp);
-      set_time(t);
-      timed = true;
+      update_time();
       timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
       break;
     case 1:
@@ -321,7 +390,7 @@ static void set_time_anim() {
     case 8:
       layer_add_child(window_get_root_layer(window), text_layer_get_layer(date_layer));
       text_layer_set_text(hour_label, "pebble>");
-      timer = app_timer_register(10 * TYPE_DELTA, set_time_anim, 0);
+      timer = app_timer_register(5 * TYPE_DELTA, set_time_anim, 0);
       break;
     case 9:
       text_layer_set_text(hour_label, "pebble>d");
@@ -354,13 +423,7 @@ static void set_time_anim() {
     case 16:
       layer_add_child(window_get_root_layer(window), text_layer_get_layer(hour_layer));
       text_layer_set_text(time_label, "pebble>");
-
-      if (firstRun && secondsSync == 0 && !settings.TypingAnimation) {
-        secondsSync = 10;
-        timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
-      } else {
-        timer = app_timer_register(10 * TYPE_DELTA, set_time_anim, 0);
-      }
+      timer = app_timer_register(5 * TYPE_DELTA, set_time_anim, 0);
       break;
     case 17:
       text_layer_set_text(time_label, "pebble>d");
@@ -388,101 +451,406 @@ static void set_time_anim() {
       break;
     case 23:
       layer_add_child(window_get_root_layer(window), text_layer_get_layer(time_layer));
-      text_layer_set_text(prompt_label, "pebble>");
-      prompt_visible = true;
+
+      if (settings.FeedEnabled) {
+        text_layer_set_text(feed_label, "pebble>");
+      } else {
+        layer_add_child(window_get_root_layer(window), inverter_layer_get_layer(prompt_layer));
+        text_layer_set_text(prompt_label, "pebble>");
+        prompt_visible = true;
+        state = 32;
+      }
+      timer = app_timer_register(5 * TYPE_DELTA, set_time_anim, 0);
+      break;
+    case 24:
+      text_layer_set_text(feed_label, "pebble>./");
+      timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
+      break;
+    case 25:
+      text_layer_set_text(feed_label, "pebble>./f");
+      timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
+      break;
+    case 26:
+      text_layer_set_text(feed_label, "pebble>./fee");
+      timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
+      break;
+    case 27:
+      text_layer_set_text(feed_label, "pebble>./feed");
+      timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
+      break;
+    case 28:
+      text_layer_set_text(feed_label, "pebble>./feed.");
+      timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
+      break;
+    case 29:
+      text_layer_set_text(feed_label, "pebble>./feed.s");
+      timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
+      break;
+    case 30:
+      text_layer_set_text(feed_label, "pebble>./feed.sh");
+      timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
+      break;
+    case 31:
+      layer_add_child(window_get_root_layer(window), text_layer_get_layer(feed_layer));
+      layer_set_hidden(text_layer_get_layer(feed_layer), false);
+
+      if (settings.FeedEnabled) {
+        marquee_feed_title();
+      }
+
+      timer = app_timer_register(5 * TYPE_DELTA, set_time_anim, 0);
+      break;
+    case 32:
+      if (settings.FeedEnabled) {
+        marquee_feed_title();
+      }
+
+      prompt_visible = false;
       timer = app_timer_register(PROMPT_DELTA, set_time_anim, 0);
       break;
     default:
-      // Rest of the minute
-      if (prompt_visible) {
-        prompt_visible = false;
-        layer_remove_from_parent(inverter_layer_get_layer(prompt_layer));
-      } else {
-        prompt_visible = true;
-        layer_add_child(window_get_root_layer(window), inverter_layer_get_layer(prompt_layer));
+      if (state > 33) {
+        state = 33;
       }
 
-      if (firstRun && ++initTime > INITTIME_PROMPT_LIMIT) {
-        firstRun = false;
-        initTime = 0;
+      // Rest of the minute
+      if (settings.FeedEnabled) {
+        marquee_feed_title();
+      } else {
+        if (prompt_visible) {
+          prompt_visible = false;
+          layer_remove_from_parent(inverter_layer_get_layer(prompt_layer));
+        } else {
+          prompt_visible = true;
+          layer_add_child(window_get_root_layer(window), inverter_layer_get_layer(prompt_layer));
+        }
       }
+
+      if (firstRun && initTime != 0 && ++initTime > INITTIME_PROMPT_LIMIT) {
+        initTime = 0;
+        firstRun = false;
+      }
+
       timer = app_timer_register(PROMPT_DELTA, set_time_anim, 0);
       break;
   }
 
-  // disabled animation
-  if (!settings.TypingAnimation && state > 16) {
-    if (!timed) {
-      temp = time(NULL);
-      t = localtime(&temp);
-      set_time(t);
-    }
-    layer_remove_from_parent(text_layer_get_layer(date_layer));
-    layer_add_child(window_get_root_layer(window), text_layer_get_layer(date_layer));
-    if (state > 16) {
-      layer_remove_from_parent(text_layer_get_layer(hour_layer));
-      layer_add_child(window_get_root_layer(window), text_layer_get_layer(hour_layer));
-      if (state > 23) {
-        layer_remove_from_parent(text_layer_get_layer(time_layer));
-        layer_add_child(window_get_root_layer(window), text_layer_get_layer(time_layer));
-      }
-    }
-    if (secondsSync > 0) {
-      secondsSync--;
-      return;
-    }
+  if (state > 0 && !settings.TypingAnimation) {
+    update_time();
   }
+
   state++;
 }
 
-static void tick_handler(struct tm *t, TimeUnits units_changed) {
-  if (timer != NULL) {
-    app_timer_cancel(timer);
+// display settings
 
-    //XXX: delay for typing animation
-    if (firstRun && state < 26) {
-      timer = app_timer_register(PROMPT_DELTA, set_time_anim, 0);
-      return;
-    }
-  }
+static void reset_display(void) {
+  // Blank before time change
+  text_layer_set_text(date_label, "pebble>");
+  layer_remove_from_parent(text_layer_get_layer(date_layer));
+  text_layer_set_text(hour_label, "");
+  layer_remove_from_parent(text_layer_get_layer(hour_layer));
+  text_layer_set_text(time_label, "");
+  layer_remove_from_parent(text_layer_get_layer(time_layer));
+  text_layer_set_text(prompt_label, "");
 
-  //TODO: display seconds
-  timer = app_timer_register(PROMPT_DELTA, set_time_anim, 0);
-  if (!firstRun && !settings.TypingAnimation) {
-    if (state > 25) {
-      state = 25;
+  layer_remove_from_parent(inverter_layer_get_layer(prompt_layer));
 
-      layer_remove_from_parent(text_layer_get_layer(date_layer));
-      layer_add_child(window_get_root_layer(window), text_layer_get_layer(date_layer));
-      layer_remove_from_parent(text_layer_get_layer(hour_layer));
-      layer_add_child(window_get_root_layer(window), text_layer_get_layer(hour_layer));
-      layer_remove_from_parent(text_layer_get_layer(time_layer));
-      layer_add_child(window_get_root_layer(window), text_layer_get_layer(time_layer));
+  text_layer_set_text(feed_label, "");
+  layer_remove_from_parent(text_layer_get_layer(feed_layer));
 
-      prompt_visible = false;
-    }
-  } else {
-    // Start anim cycle
-    state = 0;
+  layer_set_hidden(text_layer_get_layer(feed_layer), true);
 
-    // Blank before time change
-    text_layer_set_text(date_label, "pebble>");
-    layer_remove_from_parent(text_layer_get_layer(date_layer));
-    text_layer_set_text(hour_label, "");
-    layer_remove_from_parent(text_layer_get_layer(hour_layer));
-    text_layer_set_text(time_label, "");
-    layer_remove_from_parent(text_layer_get_layer(time_layer));
-    text_layer_set_text(prompt_label, "");
+  prompt_visible = false;
 
-    layer_remove_from_parent(inverter_layer_get_layer(prompt_layer));
-    prompt_visible = false;
-  }
-
-  // Change time display
-  set_time(t);
+  marquee_feed_title_reset();
 }
 
-// Window Lifecycle
+static void refresh_display_anim(void) {
+  // start animation
+  state = 0;
+
+  // reset display
+  reset_display();
+}
+
+static void register_anim_timer(void) {
+  if (!timerRegistered) {
+    timerRegistered = true;
+    timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
+  }
+}
+
+static void reset_animation(void) {
+  if (timer != NULL) {
+    app_timer_cancel(timer);
+    timerRegistered = false;
+  }
+
+  refresh_display_anim();
+  register_anim_timer();
+}
+
+// callback for settings
+static void term_sync_feed_start(void) {
+  if (feed_enabled_reload_locked) {
+    feed_title_ready = true;
+  } else if (!feed_title_sending) {
+    feed_title_ready = false;
+
+    feed_title_sending = true;
+    feed_wait_time = FEED_WAIT_TIME_LIMIT_LONG;
+    feed_append_len = 0;
+
+    memset(feed_buffer, 0, sizeof(feed_buffer));
+    memset(feed_prev_title, 0, sizeof(feed_prev_title));
+
+    strncpy(feed_title, "Loading...       ", 17);
+    text_layer_set_text(feed_layer, feed_title);
+  }
+}
+
+static void term_sync_feed_end(void) {
+  if (feed_enabled_reload_locked || !feed_title_sending) {
+    return;
+  }
+
+  char buf[FEED_TITLE_CHUNK_SIZE];
+
+  feed_title_sending = false;
+
+  while (strlen(feed_buffer) < FEED_TITLE_CHUNK_SIZE) {
+    strncat(feed_buffer, " ", 1);
+  }
+
+  strncpy(buf, feed_buffer, FEED_TITLE_CHUNK_SIZE);
+  strncat(feed_buffer, "             ", 13);
+
+  feed_index = 0;
+  feed_lastindex = strlen(feed_buffer);
+  feed_append_len = 0;
+
+  strncat(feed_buffer, buf, FEED_TITLE_CHUNK_SIZE);
+  strncpy(feed_title, feed_buffer, FEED_TITLE_CHUNK_SIZE);
+
+  text_layer_set_text(feed_layer, feed_title);
+  feed_wait_time = FEED_WAIT_TIME_LIMIT;
+
+  feed_title_ready = true;
+}
+
+static void sync_message_type(uint8_t msg_type) {
+  switch (msg_type) {
+    case MSG_TYPE_FEED_FETCHED:
+      feed_fetched = true;
+      break;
+    case MSG_TYPE_FEED_TITLE_START:
+      term_sync_feed_start();
+      break;
+    case MSG_TYPE_FEED_TITLE_END:
+      term_sync_feed_end();
+      break;
+  }
+}
+
+static void term_sync_feed_title_append(const Tuple* new_tuple) {
+  if (!feed_enabled_reload_locked) {
+
+    if (!feed_title_sending) {
+      return;
+    }
+
+    if (feed_append_len + FEED_TITLE_CHUNK_SIZE > FEED_MAX_TITLE_LEN) {
+      feed_append_len = FEED_MAX_TITLE_LEN;
+      term_sync_feed_end();
+      return;
+    }
+
+    char s[FEED_TITLE_CHUNK_SIZE];
+
+    strncpy(s, new_tuple->value->cstring, FEED_TITLE_CHUNK_SIZE);
+
+    // Skip duplicate title
+    if (strcmp(s, feed_prev_title) == 0) {
+      return;
+    }
+
+    strncpy(feed_prev_title, s, FEED_TITLE_CHUNK_SIZE);
+    strncat(feed_buffer, s, FEED_TITLE_CHUNK_SIZE);
+
+    feed_append_len += FEED_TITLE_CHUNK_SIZE;
+  }
+}
+
+static void term_sync_feed_enabled(uint8_t value) {
+  prevFeedEnabled = settings.FeedEnabled;
+  settings.FeedEnabled = value;
+
+  // Must reload display if Feed URL changed
+  if (!feed_enabled_initialized) {
+    if (--feed_enabled_init_count <= 0) {
+      feed_enabled_init_count = 0;
+
+      if ((settings.FeedEnabled
+           && settings.FeedEnabled != prevFeedEnabled)
+          || (!settings.FeedEnabled
+              && settings.FeedEnabled == prevFeedEnabled)) {
+        feed_enabled_initialized = true;
+      }
+    }
+  } else {
+    if (settings.FeedEnabled != prevFeedEnabled) {
+      if (settings.FeedEnabled
+          && !prevFeedEnabled && !feed_title_sending) {
+
+        strncpy(feed_buffer, "Please reload    ", 17);
+        strncpy(feed_title, feed_buffer, 17);
+
+        text_layer_set_text(feed_layer, feed_title);
+
+        feed_enabled_reload_locked = true;
+        feed_index = 0;
+        feed_title_ready = true;
+      }
+
+      reset_next_tick = true;
+      reset_animation();
+    }
+  }
+}
+
+static void sync_error_callback(DictionaryResult dict_error,
+                                AppMessageResult app_message_error,
+                                void *context) {
+  //APP_LOG(APP_LOG_LEVEL_DEBUG, "App Message Sync Error: %d", app_message_error);
+}
+
+static void sync_tuple_changed_callback(const uint32_t key,
+                                        const Tuple* new_tuple,
+                                        const Tuple* old_tuple,
+                                        void* context) {
+  switch (key) {
+    case BLUETOOTH_VIBE_KEY:
+      settings.BluetoothVibe = new_tuple->value->uint8;
+      break;
+    case TYPING_ANIMATION_KEY:
+      settings.TypingAnimation = new_tuple->value->uint8;
+      break;
+    case TIMEZONE_OFFSET_KEY:
+      settings.TimezoneOffset = new_tuple->value->int16;
+      break;
+    case FEED_ENABLED_KEY:
+      term_sync_feed_enabled(new_tuple->value->uint8);
+      break;
+    case FEED_URL_KEY:
+      // nothing
+      break;
+    case MSG_TYPE_KEY:
+      // message from JavaScript
+      sync_message_type(new_tuple->value->uint8);
+      break;
+    case FEED_TITLE_KEY:
+      term_sync_feed_title_append(new_tuple);
+      break;
+  }
+}
+
+static void in_dropped_handler(AppMessageResult reason, void *context) {
+}
+
+static void out_failed_handler(DictionaryIterator *failed, AppMessageResult reason, void *context) {
+}
+
+static void in_received_handler(DictionaryIterator *iter, void *context) {
+}
+
+
+static bool send_msg(Tuplet t) {
+
+  DictionaryIterator *iter;
+  if (app_message_outbox_begin(&iter) != APP_MSG_OK) {
+    return false;
+  }
+
+  if (iter == NULL) {
+    return false;
+  }
+
+  dict_write_tuplet(iter, &t);
+  dict_write_end(iter);
+
+  return (app_message_outbox_send() == APP_MSG_OK);
+}
+
+static void ping(void) {
+  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, 0);
+
+  send_msg(type_tuplet);
+}
+
+static void send_close_msg(void) {
+  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, 1);
+
+  send_msg(type_tuplet);
+}
+
+static void fetch_feed(void) {
+  if (!can_fetch_feed) {
+    return;
+  }
+  can_fetch_feed = false;
+
+  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, 2);
+
+  send_msg(type_tuplet);
+}
+
+static void ready_feed(void) {
+  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, 3);
+
+  send_msg(type_tuplet);
+}
+
+
+static void tick_handler(struct tm *t, TimeUnits units_changed) {
+  bool reset = false;
+
+  switch (initTime) {
+    case 0: // initialized
+      if (settings.TypingAnimation) {
+        reset = true;
+      }
+      break;
+    case 1: // init
+      if (firstRun && !timerRegistered) {
+        reset = true;
+      }
+      break;
+  }
+
+  if (reset_next_tick && !firstRun) {
+    reset = true;
+  }
+
+  if (!reset) {
+    register_anim_timer();
+    return;
+  }
+
+  if (reset_next_tick) {
+    reset_next_tick = false;
+  }
+
+  reset_animation();
+
+  if (firstRun && initTime == 1 && settings.FeedEnabled) {
+    can_fetch_feed = true;
+    // send ready message to JavaScript
+    ready_feed();
+  }
+}
+
+// window lifecycle
 
 static void window_load(Window *window) {
   // font
@@ -522,7 +890,7 @@ static void window_load(Window *window) {
   text_layer_set_text(hour_layer, "");
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(hour_layer));
 
-  // Time
+  // time
   time_label = cl_init_text_layer(GRect(5, 87, 144, 30),
                                   GColorWhite,
                                   GColorClear,
@@ -539,7 +907,7 @@ static void window_load(Window *window) {
   text_layer_set_text(time_layer, "");
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(time_layer));
 
-  // Prompt
+  // prompt
   prompt_label = cl_init_text_layer(GRect(5, 119, 144, 30),
                                     GColorWhite,
                                     GColorClear,
@@ -549,9 +917,32 @@ static void window_load(Window *window) {
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(prompt_label));
 
   prompt_layer = inverter_layer_create(GRect(61, 132, 8, 2));
+
+  // feed
+  feed_label = cl_init_text_layer(GRect(5, 119, 144, 30),
+                                  GColorWhite,
+                                  GColorClear,
+                                  font_handle,
+                                  GTextAlignmentLeft);
+  text_layer_set_text(feed_label, "");
+  layer_add_child(window_get_root_layer(window), text_layer_get_layer(feed_label));
+
+  feed_layer = cl_init_text_layer(GRect(5, 135, 144, 30),
+                                  GColorWhite,
+                                  GColorClear,
+                                  font_handle,
+                                  GTextAlignmentLeft);
+
+  text_layer_set_text(feed_layer, "");
+  layer_set_hidden(text_layer_get_layer(feed_layer), true);
+  layer_add_child(window_get_root_layer(window), text_layer_get_layer(feed_layer));
 }
 
+
 static void window_unload(Window *window) {
+  // send message to close
+  send_close_msg();
+
   // date
   text_layer_destroy(date_label);
   text_layer_destroy(date_layer);
@@ -567,9 +958,18 @@ static void window_unload(Window *window) {
   // Prompt
   text_layer_destroy(prompt_label);
   inverter_layer_destroy(prompt_layer);
+
+  // feed
+  text_layer_destroy(feed_label);
+  text_layer_destroy(feed_layer);
+
+  if (timer != NULL) {
+    app_timer_cancel(timer);
+    timerRegistered = false;
+  }
 }
 
-// App Lifecycle
+// app lifecycle
 
 static void init(void) {
   memset(&battery_percent_layers, 0, sizeof(battery_percent_layers));
@@ -581,9 +981,10 @@ static void init(void) {
   }
   window_layer = window_get_root_layer(window);
 
-  const int inbound_size = 64;
-  const int outbound_size = 64;
+  const int inbound_size = 128;
+  const int outbound_size = 128;
   app_message_open(inbound_size, outbound_size);
+
   persist_read_data(SETTINGS_KEY, &settings, sizeof(settings));
 
   background_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BACKGROUND);
@@ -632,6 +1033,7 @@ static void init(void) {
   layer_add_child(window_layer, bitmap_layer_get_layer(branding_mask_layer));
   branding_mask_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BRANDING_MASK);
   bitmap_layer_set_bitmap(branding_mask_layer, branding_mask_image);
+
   //XXX: mask
   layer_set_hidden(bitmap_layer_get_layer(branding_mask_layer), true);
 
@@ -653,19 +1055,26 @@ static void init(void) {
   Tuplet initial_values[] = {
     TupletInteger(BLUETOOTH_VIBE_KEY, settings.BluetoothVibe),
     TupletInteger(TYPING_ANIMATION_KEY, settings.TypingAnimation),
-    TupletInteger(TIMEZONE_OFFSET_KEY, settings.TimezoneOffset)
+    TupletInteger(TIMEZONE_OFFSET_KEY, settings.TimezoneOffset),
+    TupletInteger(FEED_ENABLED_KEY, settings.FeedEnabled),
+    TupletCString(FEED_URL_KEY, ""),
+    TupletInteger(MSG_TYPE_KEY, (uint8_t)0),
+    TupletCString(FEED_TITLE_KEY, "Loading..........")
   };
 
   app_sync_init(&sync, sync_buffer, sizeof(sync_buffer),
                 initial_values, ARRAY_LENGTH(initial_values),
-                sync_tuple_changed_callback, NULL, NULL);
+                sync_tuple_changed_callback,
+                sync_error_callback,
+                NULL);
 
   appStarted = true;
 
   bluetooth_connection_service_subscribe(bluetooth_connection_callback);
   battery_state_service_subscribe(&update_battery);
 
-  window_stack_push(window, true);
+  const bool animated = true;
+  window_stack_push(window, animated);
 }
 
 static void deinit(void) {
@@ -699,8 +1108,8 @@ static void deinit(void) {
     layer_remove_from_parent(bitmap_layer_get_layer(battery_percent_layers[i]));
     gbitmap_destroy(battery_percent_image[i]);
     battery_percent_image[i] = NULL;
-    bitmap_layer_destroy(battery_percent_layers[i]); 
-	  battery_percent_layers[i] = NULL;
+    bitmap_layer_destroy(battery_percent_layers[i]);
+    battery_percent_layers[i] = NULL;
   }
 
   layer_remove_from_parent(window_layer);
@@ -731,3 +1140,4 @@ static TextLayer* cl_init_text_layer(GRect location,
 
   return layer;
 }
+
