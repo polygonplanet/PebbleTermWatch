@@ -51,7 +51,7 @@
           <input id="feedEnabled" type="hidden" value="">
         </div>
       </div>
-      <div class="form-group">
+      <div class="form-group feed-input-group">
         <label>
           Feed fetch interval:
         </label>
@@ -78,7 +78,7 @@
           </label>
         </div>
       </div>
-      <div class="form-group">
+      <div class="form-group feed-input-group">
         <label>
           Vibrate when receive new Feed:
         </label>
@@ -145,7 +145,7 @@
         },
         fix: function(v) {
           var url = ('' + v).replace(/^\s+|\s+$/g, '');
-          return /^https?:\/\//.test(url) ? url : '';
+          return /^https?:\/\/\w+/.test(url) ? url : '';
         }
       },
       feedEnabled: {
@@ -273,6 +273,16 @@
         ev.preventDefault();
         ev.stopPropagation();
       });
+
+
+      setTimeout(function checkFeedUrl() {
+        var val = $('#feedUrl').val();
+        var group = $('.feed-input-group input, .feed-input-group label');
+
+        group.prop('disabled', !store.feedUrl.fix(val));
+
+        setTimeout(checkFeedUrl, 100);
+      }, 100);
     });
     </script>
 
