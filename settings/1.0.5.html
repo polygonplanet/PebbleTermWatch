@@ -23,6 +23,7 @@
       <h2>
         Pebble Term Watch
       </h2>
+      <hr>
       <div class="form-group">
         <label>
           Bluetooth disconnect vibration:
@@ -32,6 +33,7 @@
           ON
         </label>
       </div>
+      <hr>
       <div class="form-group">
         <label>
           Minutely typing animation:
@@ -41,6 +43,7 @@
           ON
         </label>
       </div>
+      <hr>
       <div class="form-group">
         <label>
           Feed URL (Optional):
@@ -51,6 +54,7 @@
           <input id="feedEnabled" type="hidden" value="">
         </div>
       </div>
+      <hr>
       <div class="form-group feed-input-group">
         <label>
           Feed fetch interval:
@@ -78,6 +82,7 @@
           </label>
         </div>
       </div>
+      <hr>
       <div class="form-group feed-input-group">
         <label>
           Vibrate when receive new Feed:
@@ -87,13 +92,14 @@
           ON
         </label>
       </div>
+      <hr>
       <div class="submit-group group-buttons">
         <button class="btn button-submit btn-primary btn-lg">
           Save
         </button>
       </div>
       <hr>
-      <div>
+      <div class="footer-addr">
         Pebble Term Watch by
         <a href="http://polygonpla.net/">polygon planet</a>.
       </div>
@@ -103,7 +109,10 @@
     <script src="js/jquery.touchtrapper.js"></script>
 
     <script>
-    var STORE_KEY = 'pebbleTerm';
+    var STORE_KEYS = [
+      'pebbleTerm',
+      'pebbleTermLifecycle'
+    ];
 
     var store = {
       bluetoothVibe: {
@@ -227,7 +236,7 @@
 
       for (var i = 0, len = window.localStorage.length; i < len; i++) {
         key = window.localStorage.key(i);
-        if (key != null && key !== STORE_KEY) {
+        if (key != null && !~STORE_KEYS.indexOf(key)) {
           window.localStorage.removeItem(key);
         }
       }
@@ -305,13 +314,21 @@
       });
 
 
-      setTimeout(function checkFeedUrl() {
+      setTimeout(function checkFields() {
         var val = $('#feedUrl').val();
         var group = $('.feed-input-group input, .feed-input-group label');
 
         group.prop('disabled', !store.feedUrl.fix(val));
 
-        setTimeout(checkFeedUrl, 100);
+        $('input[type=checkbox], input[type=radio]').each(function() {
+          if (!$(this).prop('disabled') && $(this).prop('checked')) {
+            $(this).parent().addClass('field-selected');
+          } else {
+            $(this).parent().removeClass('field-selected');
+          }
+        });
+
+        setTimeout(checkFields, 100);
       }, 100);
     });
     </script>

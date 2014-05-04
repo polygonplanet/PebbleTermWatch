@@ -18,3 +18,15 @@
   margin-top: 1em;
 }
 
+.container .field-selected {
+  color: #3f7cbc;
+}
+
+.container .feedInterval-group > .radio {
+  margin-bottom: 1.5em;
+}
+
+.container .footer-addr {
+  margin-bottom: 1em;
+}
+
