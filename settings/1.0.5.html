@@ -146,6 +146,9 @@
         fix: function(v) {
           var url = ('' + v).replace(/^\s+|\s+$/g, '');
           return /^https?:\/\/\w+/.test(url) ? url : '';
+        },
+        encode: function(v) {
+          return encodeParams(v);
         }
       },
       feedEnabled: {
@@ -241,6 +244,21 @@
     };
 
 
+    var encodeParams = function(uri) {
+      var isEncoded = function(s) {
+        return /^(?:[a-zA-Z0-9_~.-]|%[0-9a-fA-F]{2})*$/.test(s);
+      };
+
+      var encode = function(s) {
+        return isEncoded(s) ? s : encodeURIComponent(s);
+      };
+
+      return uri.replace(/([?&]+)([^=&]+)=([^&]*)/g, function(match, sep, key, value) {
+        return sep + encode(key) + '=' + encode(value);
+      });
+    };
+
+
     var closeWin = function(data) {
       var uri = 'pebblejs://close#' + encodeURIComponent(JSON.stringify(data));
       window.location.href = uri;
@@ -265,8 +283,13 @@
       });
 
       $('.button-submit').on('click', function(ev) {
+        var f = function(v) { return v };
+
         var values = Object.keys(store).reduce(function(o, k) {
-          return o[k] = store[k].get($(store[k].selector)), o;
+          var value = store[k].get($(store[k].selector));
+
+          o[k] = (store[k].encode || f)(value);
+          return o;
         }, {});
 
         closeWin(values);
