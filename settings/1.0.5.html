@@ -145,7 +145,7 @@
         },
         fix: function(v) {
           var url = ('' + v).replace(/^\s+|\s+$/g, '');
-          return /^https?:\/\/\w+/.test(url) ? encodeParams(url) : '';
+          return /^https?:\/\/\w+/.test(url) ? url : '';
         }
       },
       feedEnabled: {
@@ -264,11 +264,35 @@
     };
 
 
+    var base64Encode = function(s) {
+      return window.btoa(unescape(encodeURIComponent(s)));
+    };
+
+    var base64Decode = function(s) {
+      return decodeURIComponent(escape(window.atob(s)));
+    };
+
+
+    var encodeStore = function(data) {
+      data = { pebbleTermStore: basse64Encode(JSON.stringify(data)) };
+      return encodeURIComponent(JSON.stringify(data));
+    };
+
+    var decodeStore = function(uri) {
+      var params = parseParams(uri);
+
+      if (params.pebbleTermStore) {
+        params = parseParams(base64Decode(params.pebbleTermStore));
+      }
+      return params;
+    };
+
+
     $(document).ready(function() {
       // remove old item
       clearStorage();
 
-      var params = parseParams(window.location.href);
+      var params = decodeStore(window.location.href);
 
       Object.keys(store).forEach(function(key) {
         var value = params[key];
