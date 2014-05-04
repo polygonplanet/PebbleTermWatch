@@ -9,6 +9,7 @@
  *  91 Dub v2.0: https://github.com/orviwan/91-Dub-v2.0
  */
 #include <pebble.h>
+#include "error_handle.h"
 
 #define TYPE_DELTA (200)
 #define PROMPT_DELTA (1000)
@@ -38,13 +39,15 @@ typedef struct persist {
   uint8_t TypingAnimation;
   int16_t TimezoneOffset;
   uint8_t FeedEnabled;
+  uint8_t FeedVibe;
 } __attribute__((__packed__)) persist;
 
 persist settings = {
   .BluetoothVibe = 1,
   .TypingAnimation = 1,
   .TimezoneOffset = 0,
-  .FeedEnabled = 0
+  .FeedEnabled = 0,
+  .FeedVibe = 0
 };
 
 enum {
@@ -54,7 +57,9 @@ enum {
   FEED_ENABLED_KEY = 0x3,
   FEED_URL_KEY = 0x4,
   MSG_TYPE_KEY = 0x5,
-  FEED_TITLE_KEY = 0x6
+  FEED_TITLE_KEY = 0x6,
+  FEED_VIBE_KEY = 0x7,
+  FEED_INTERVAL_KEY = 0x8
 };
 
 static bool appStarted = false;
@@ -64,8 +69,13 @@ static uint8_t prevFeedEnabled = (uint8_t)0;
 static bool firstRun = true;
 static int initTime = 1;
 static int startTime = 0;
+
+#define MESSAGE_STATE_SEND (5)
+static int messageState = 0;
+
 static bool timerRegistered = false;
 
+static bool battery_charging = false;
 static bool reset_next_tick = false;
 
 // bluetooth
@@ -136,8 +146,12 @@ static bool feed_marquee_animated = false;
 static int feed_wait_time = FEED_WAIT_TIME_LIMIT;
 static int feed_append_len = 0;
 
+#define FEED_APPEND_EMPTY_MAX (10)
+static int feed_append_empty_count = 0;
+
 static bool feed_fetched = false;
 static bool feed_enabled_initialized = false;
+static bool feed_first_displayed = false;
 
 static int feed_enabled_init_count = 2;
 static bool feed_enabled_reload_locked = false;
@@ -201,8 +215,10 @@ void change_battery_icon(bool charging) {
   gbitmap_destroy(battery_image);
 
   if (charging) {
+    battery_charging = true;
     battery_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BATTERY_CHARGE);
   } else {
+    battery_charging = false;
     battery_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BATTERY);
   }
   bitmap_layer_set_bitmap(battery_image_layer, battery_image);
@@ -357,9 +373,58 @@ static void marquee_feed_title(void) {
     if (feed_title_ready) {
       strncpy(feed_title, feed_buffer + feed_index, 17);
       text_layer_set_text(feed_layer, feed_title);
+
       feed_marquee_animating = true;
+      feed_first_displayed = true;
     }
   }
+}
+
+
+static bool send_msg(Tuplet t) {
+
+  DictionaryIterator *iter;
+  if (app_message_outbox_begin(&iter) != APP_MSG_OK) {
+    return false;
+  }
+
+  if (iter == NULL) {
+    return false;
+  }
+
+  dict_write_tuplet(iter, &t);
+  dict_write_end(iter);
+
+  return (app_message_outbox_send() == APP_MSG_OK);
+}
+
+static void ping(void) {
+  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, 0);
+
+  send_msg(type_tuplet);
+}
+
+static void send_close_msg(void) {
+  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, 1);
+
+  send_msg(type_tuplet);
+}
+
+static void fetch_feed(void) {
+  if (!can_fetch_feed) {
+    return;
+  }
+  can_fetch_feed = false;
+
+  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, 2);
+
+  send_msg(type_tuplet);
+}
+
+static void ready_feed(void) {
+  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, 3);
+
+  send_msg(type_tuplet);
 }
 
 static void set_time_anim() {
@@ -563,6 +628,11 @@ static void set_time_anim() {
     update_time();
   }
 
+  if (++messageState > MESSAGE_STATE_SEND) {
+    messageState = 0;
+    ping();
+  }
+
   state++;
 }
 
@@ -615,16 +685,32 @@ static void reset_animation(void) {
   register_anim_timer();
 }
 
+static void term_vibes_short_pulse(void) {
+  if (battery_charging) {
+    // disabled on battery charging
+    return;
+  }
+
+  // Vibe pattern: ON for 160ms
+  static const uint32_t const segments[] = { 160 };
+  VibePattern pat = {
+    .durations = segments,
+    .num_segments = ARRAY_LENGTH(segments),
+  };
+  vibes_enqueue_custom_pattern(pat);
+}
+
 // callback for settings
 static void term_sync_feed_start(void) {
   if (feed_enabled_reload_locked) {
     feed_title_ready = true;
   } else if (!feed_title_sending) {
     feed_title_ready = false;
-
     feed_title_sending = true;
+
     feed_wait_time = FEED_WAIT_TIME_LIMIT_LONG;
     feed_append_len = 0;
+    feed_append_empty_count = 0;
 
     memset(feed_buffer, 0, sizeof(feed_buffer));
     memset(feed_prev_title, 0, sizeof(feed_prev_title));
@@ -653,6 +739,7 @@ static void term_sync_feed_end(void) {
   feed_index = 0;
   feed_lastindex = strlen(feed_buffer);
   feed_append_len = 0;
+  feed_append_empty_count = 0;
 
   strncat(feed_buffer, buf, FEED_TITLE_CHUNK_SIZE);
   strncpy(feed_title, feed_buffer, FEED_TITLE_CHUNK_SIZE);
@@ -661,12 +748,16 @@ static void term_sync_feed_end(void) {
   feed_wait_time = FEED_WAIT_TIME_LIMIT;
 
   feed_title_ready = true;
+
+  // vibe
+  if (feed_first_displayed && settings.FeedVibe) {
+    term_vibes_short_pulse();
+  }
 }
 
 static void sync_message_type(uint8_t msg_type) {
   switch (msg_type) {
     case MSG_TYPE_FEED_FETCHED:
-      feed_fetched = true;
       break;
     case MSG_TYPE_FEED_TITLE_START:
       term_sync_feed_start();
@@ -684,9 +775,12 @@ static void term_sync_feed_title_append(const Tuple* new_tuple) {
     }
 
     if (feed_append_len > 0 && strlen(new_tuple->value->cstring) == 0) {
-      feed_append_len = FEED_MAX_TITLE_LEN;
-      term_sync_feed_end();
-      return;
+      if (++feed_append_empty_count > FEED_APPEND_EMPTY_MAX) {
+        feed_append_empty_count = 0;
+        feed_append_len = FEED_MAX_TITLE_LEN;
+        term_sync_feed_end();
+        return;
+      }
     }
 
     if (feed_append_len + FEED_TITLE_CHUNK_SIZE > FEED_MAX_TITLE_LEN) {
@@ -695,12 +789,18 @@ static void term_sync_feed_title_append(const Tuple* new_tuple) {
       return;
     }
 
+    if (strlen(new_tuple->value->cstring) == 0) {
+      return;
+    }
+
+    feed_append_empty_count = 0;
+
     char s[FEED_TITLE_CHUNK_SIZE];
 
     strncpy(s, new_tuple->value->cstring, FEED_TITLE_CHUNK_SIZE);
 
     // Skip duplicate title
-    if (strcmp(s, feed_prev_title) == 0) {
+    if (strncmp(s, feed_prev_title, FEED_TITLE_CHUNK_SIZE) == 0) {
       return;
     }
 
@@ -748,12 +848,6 @@ static void term_sync_feed_enabled(uint8_t value) {
   }
 }
 
-static void sync_error_callback(DictionaryResult dict_error,
-                                AppMessageResult app_message_error,
-                                void *context) {
-  //APP_LOG(APP_LOG_LEVEL_DEBUG, "App Message Sync Error: %d", app_message_error);
-}
-
 static void sync_tuple_changed_callback(const uint32_t key,
                                         const Tuple* new_tuple,
                                         const Tuple* old_tuple,
@@ -781,6 +875,11 @@ static void sync_tuple_changed_callback(const uint32_t key,
     case FEED_TITLE_KEY:
       term_sync_feed_title_append(new_tuple);
       break;
+    case FEED_VIBE_KEY:
+      settings.FeedVibe = new_tuple->value->uint8;
+      break;
+    case FEED_INTERVAL_KEY:
+      break;
   }
 }
 
@@ -792,54 +891,6 @@ static void out_failed_handler(DictionaryIterator *failed, AppMessageResult reas
 
 static void in_received_handler(DictionaryIterator *iter, void *context) {
 }
-
-
-static bool send_msg(Tuplet t) {
-
-  DictionaryIterator *iter;
-  if (app_message_outbox_begin(&iter) != APP_MSG_OK) {
-    return false;
-  }
-
-  if (iter == NULL) {
-    return false;
-  }
-
-  dict_write_tuplet(iter, &t);
-  dict_write_end(iter);
-
-  return (app_message_outbox_send() == APP_MSG_OK);
-}
-
-static void ping(void) {
-  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, 0);
-
-  send_msg(type_tuplet);
-}
-
-static void send_close_msg(void) {
-  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, 1);
-
-  send_msg(type_tuplet);
-}
-
-static void fetch_feed(void) {
-  if (!can_fetch_feed) {
-    return;
-  }
-  can_fetch_feed = false;
-
-  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, 2);
-
-  send_msg(type_tuplet);
-}
-
-static void ready_feed(void) {
-  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, 3);
-
-  send_msg(type_tuplet);
-}
-
 
 static void tick_handler(struct tm *t, TimeUnits units_changed) {
   bool reset = false;
@@ -1011,7 +1062,7 @@ static void init(void) {
   window_layer = window_get_root_layer(window);
 
   const int inbound_size = 128;
-  const int outbound_size = 128;
+  const int outbound_size = 64;
   app_message_open(inbound_size, outbound_size);
 
   persist_read_data(SETTINGS_KEY, &settings, sizeof(settings));
@@ -1088,7 +1139,9 @@ static void init(void) {
     TupletInteger(FEED_ENABLED_KEY, settings.FeedEnabled),
     TupletCString(FEED_URL_KEY, ""),
     TupletInteger(MSG_TYPE_KEY, (uint8_t)0),
-    TupletCString(FEED_TITLE_KEY, "Loading..........")
+    TupletCString(FEED_TITLE_KEY, "Loading.........."),
+    TupletInteger(FEED_VIBE_KEY, settings.FeedVibe),
+    TupletInteger(FEED_INTERVAL_KEY, (uint8_t)0)
   };
 
   app_sync_init(&sync, sync_buffer, sizeof(sync_buffer),

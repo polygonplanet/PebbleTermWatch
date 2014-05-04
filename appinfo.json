@@ -1,99 +1,32 @@
 {
     "longName": "Pebble Term Watch",
+    "companyName": "polygon planet",
+    "versionLabel": "1.0.5",
     "watchapp": {
         "watchface": true
     },
-    "companyName": "polygon planet",
-    "shortName": "Pebble Term",
-    "capabilities": [
-        "configurable"
-    ],
-    "uuid": "4e36e415-af6f-4cf9-a7f5-bf709e69c68c",
+    "appKeys": {
+        "feedTitle": 6,
+        "feedInterval": 8,
+        "feedUrl": 4,
+        "bluetoothVibe": 0,
+        "msgType": 5,
+        "timezoneOffset": 2,
+        "typingAnimation": 1,
+        "feedEnabled": 3,
+        "feedVibe": 7
+    },
     "resources": {
         "media": [
             {
-                "file": "fonts/lucida.ttf",
-                "name": "FONT_LUCIDA_13",
-                "type": "font"
+                "file": "images/icon_pebble_term_watch_small.png",
+                "name": "IMAGE_APP_ICON",
+                "type": "png",
+                "menuIcon": true
             },
             {
-                "file": "images/icon_battery.png",
-                "name": "IMAGE_BATTERY",
-                "type": "png"
-            },
-            {
-                "file": "images/icon_battery_charge.png",
-                "name": "IMAGE_BATTERY_CHARGE",
-                "type": "png"
-            },
-            {
-                "file": "images/tiny_0.png",
-                "name": "IMAGE_TINY_0",
-                "type": "png"
-            },
-            {
-                "file": "images/tiny_1.png",
-                "name": "IMAGE_TINY_1",
-                "type": "png"
-            },
-            {
-                "file": "images/tiny_2.png",
-                "name": "IMAGE_TINY_2",
-                "type": "png"
-            },
-            {
-                "file": "images/tiny_3.png",
-                "name": "IMAGE_TINY_3",
-                "type": "png"
-            },
-            {
-                "file": "images/tiny_4.png",
-                "name": "IMAGE_TINY_4",
-                "type": "png"
-            },
-            {
-                "file": "images/tiny_5.png",
-                "name": "IMAGE_TINY_5",
-                "type": "png"
-            },
-            {
-                "file": "images/tiny_6.png",
-                "name": "IMAGE_TINY_6",
-                "type": "png"
-            },
-            {
-                "file": "images/tiny_7.png",
-                "name": "IMAGE_TINY_7",
-                "type": "png"
-            },
-            {
-                "file": "images/tiny_8.png",
-                "name": "IMAGE_TINY_8",
-                "type": "png"
-            },
-            {
-                "file": "images/tiny_9.png",
-                "name": "IMAGE_TINY_9",
-                "type": "png"
-            },
-            {
-                "file": "images/tiny_percent.png",
-                "name": "IMAGE_TINY_PERCENT",
-                "type": "png"
-            },
-            {
-                "file": "images/branding-mask.png",
-                "name": "IMAGE_BRANDING_MASK",
-                "type": "png"
-            },
-            {
-                "file": "images/branding-mask-invert.png",
-                "name": "IMAGE_BRANDING_MASK_INVERT",
-                "type": "png"
-            },
-            {
-                "file": "images/background-image.png",
-                "name": "IMAGE_BACKGROUND",
+                "file": "images/icon_bluetooth.png",
+                "name": "IMAGE_BLUETOOTH",
                 "type": "png"
             },
             {
@@ -102,27 +35,96 @@
                 "type": "png"
             },
             {
-                "file": "images/icon_bluetooth.png",
-                "name": "IMAGE_BLUETOOTH",
+                "file": "images/background-image.png",
+                "name": "IMAGE_BACKGROUND",
                 "type": "png"
             },
             {
-                "file": "images/icon_pebble_term_watch_small.png",
-                "menuIcon": true,
-                "name": "IMAGE_APP_ICON",
+                "file": "images/branding-mask-invert.png",
+                "name": "IMAGE_BRANDING_MASK_INVERT",
                 "type": "png"
+            },
+            {
+                "file": "images/branding-mask.png",
+                "name": "IMAGE_BRANDING_MASK",
+                "type": "png"
+            },
+            {
+                "file": "images/tiny_percent.png",
+                "name": "IMAGE_TINY_PERCENT",
+                "type": "png"
+            },
+            {
+                "file": "images/tiny_9.png",
+                "name": "IMAGE_TINY_9",
+                "type": "png"
+            },
+            {
+                "file": "images/tiny_8.png",
+                "name": "IMAGE_TINY_8",
+                "type": "png"
+            },
+            {
+                "file": "images/tiny_7.png",
+                "name": "IMAGE_TINY_7",
+                "type": "png"
+            },
+            {
+                "file": "images/tiny_6.png",
+                "name": "IMAGE_TINY_6",
+                "type": "png"
+            },
+            {
+                "file": "images/tiny_5.png",
+                "name": "IMAGE_TINY_5",
+                "type": "png"
+            },
+            {
+                "file": "images/tiny_4.png",
+                "name": "IMAGE_TINY_4",
+                "type": "png"
+            },
+            {
+                "file": "images/tiny_3.png",
+                "name": "IMAGE_TINY_3",
+                "type": "png"
+            },
+            {
+                "file": "images/tiny_2.png",
+                "name": "IMAGE_TINY_2",
+                "type": "png"
+            },
+            {
+                "file": "images/tiny_1.png",
+                "name": "IMAGE_TINY_1",
+                "type": "png"
+            },
+            {
+                "file": "images/tiny_0.png",
+                "name": "IMAGE_TINY_0",
+                "type": "png"
+            },
+            {
+                "file": "images/icon_battery_charge.png",
+                "name": "IMAGE_BATTERY_CHARGE",
+                "type": "png"
+            },
+            {
+                "file": "images/icon_battery.png",
+                "name": "IMAGE_BATTERY",
+                "type": "png"
+            },
+            {
+                "file": "fonts/lucida.ttf",
+                "name": "FONT_LUCIDA_13",
+                "type": "font"
             }
         ]
     },
-    "versionLabel": "1.0.4",
-    "appKeys": {
-        "timezoneOffset": 2,
-        "msgType": 5,
-        "typingAnimation": 1,
-        "feedEnabled": 3,
-        "feedTitle": 6,
-        "bluetoothVibe": 0,
-        "feedUrl": 4
-    },
+    "uuid": "4e36e415-af6f-4cf9-a7f5-bf709e69c68c",
+    "capabilities": [
+        "configurable"
+    ],
+    "shortName": "Pebble Term",
     "versionCode": 1
 }
