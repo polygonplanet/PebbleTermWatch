@@ -24,7 +24,9 @@ var Feed = require('feed');
 var util = require('util');
 var PebbleTerm = require('pebbleterm');
 var AppMessage = require('appmessage');
+var Lifecycle = require('lifecycle');
 
+var lifecycle = new Lifecycle();
 var store, feed;
 
 
@@ -32,6 +34,8 @@ util.mixin(PebbleTerm, {
   ready: false,
   closed: false,
   cleared: false,
+  useCache: false,
+  lifecycle: lifecycle,
   AppMessage: AppMessage
 });
 
@@ -49,15 +53,12 @@ util.mixin(AppMessage, {
 
 Pebble.addEventListener('ready', function(ev) {
   store.load();
-
-  // lifecycle
   AppMessage.ping();
   PebbleTerm.ready = true;
 });
 
 Pebble.addEventListener('showConfiguration', function(ev) {
   var url = store.toURI(SETTINGS_URL);
-
   Pebble.openURL(url);
 });
 
@@ -90,6 +91,7 @@ Pebble.addEventListener('appmessage', function(e) {
       case MSG_TYPE_PING:
         break;
       case MSG_TYPE_APP_CLOSE:
+        //TODO: Cannot get message
         PebbleTerm.closed = true;
 
         if (feed) {
@@ -97,13 +99,10 @@ Pebble.addEventListener('appmessage', function(e) {
         }
         return;
       case MSG_TYPE_FETCH_FEED:
-        if (feed && feed.url) {
-          feed.refetch = true;
-        }
         break;
       case MSG_TYPE_FEED_READY:
-        if (feed && feed.url && !feed.fetching) {
-          feed.fetch();
+        if (!feed || !feed.url) {
+          PebbleTerm.useCache = true;
         }
         break;
       case MSG_TYPE_FEED_FETCHED:
@@ -116,7 +115,7 @@ Pebble.addEventListener('appmessage', function(e) {
   }
 });
 
-store = PebbleTerm.store = new Store({
+store = PebbleTerm.store = new Store('pebbleTerm', {
   bluetoothVibe: {
     send: true,
     storage: true,
@@ -261,16 +260,55 @@ store = PebbleTerm.store = new Store({
 });
 
 
-util.till(function() {
-  return PebbleTerm.ready;
-}).then(function() {
-  var url = store.feedUrl.get();
+(function init_lifecycle() {
+  var startTime = Date.now();
 
-  if (url) {
-    feed = PebbleTerm.feed = new Feed(url);
-    feed.fetch();
-  }
-});
+  // Pebble JavaScript SDK lifecycle interval (3 minutes?)
+  var max = 3 * 60 * 1000;
+  var timeout = false;
+
+  util.till(function() {
+    if (Date.now() - startTime > max) {
+      timeout = true;
+      return true;
+    }
+
+    if (PebbleTerm.ready) {
+      if (PebbleTerm.useCache) {
+        return true;
+      }
+
+      if (lifecycle.isRunning()) {
+        return false;
+      }
+
+      PebbleTerm.lifecycle.store.load();
+      var lastFetchTime = PebbleTerm.lifecycle.store.lastTime.get();
+      var interval = PebbleTerm.store.feedInterval.get() * 1000;
+
+      if (!lastFetchTime || Date.now() - lastFetchTime > interval) {
+        return true;
+      }
+    }
+
+    return false;
+  }, 1000).then(function() {
+    if (timeout) {
+      return;
+    }
+
+    var url = store.feedUrl.get();
+
+    if (url) {
+      var useCache = PebbleTerm.useCache;
+
+      if (lifecycle.isRunning() || useCache) {
+        feed = PebbleTerm.feed = new Feed(url);
+        feed.fetch(useCache);
+      }
+    }
+  });
+}());
 
 
 }).apply(this, (function(global, exports, require) {
@@ -285,11 +323,15 @@ var hasOwn = Op.hasOwnProperty.call.bind(Op.hasOwnProperty);
 
 
 // persist store
-var Store = exports.Store = function(props) {
+var Store = exports.Store = function(key, props) {
+  this._key = key;
   mixin(this, props);
 };
 
-Store.KEY = 'pebbleTerm';
+Store.KEYS = [
+  'pebbleTerm',
+  'pebbleTermLifecycle'
+];
 
 Store.prototype = {
   keys: function(type) {
@@ -355,10 +397,10 @@ Store.prototype = {
     }
   },
   save: function() {
-    window.localStorage.setItem(Store.KEY, this.toJSON('storage'));
+    window.localStorage.setItem(this._key, this.toJSON('storage'));
   },
   load: function() {
-    var data = window.localStorage.getItem(Store.KEY);
+    var data = window.localStorage.getItem(this._key);
 
     if (!data) {
       return;
@@ -382,10 +424,125 @@ Store.prototype = {
     for (var i = 0, len = window.localStorage.length; i < len; i++) {
       key = window.localStorage.key(i);
 
-      if (key !== null && key !== void 0 && key !== Store.KEY) {
+      if (key !== null && key !== void 0 && !~Store.KEYS.indexOf(key)) {
         window.localStorage.removeItem(key);
       }
     }
+  }
+};
+
+
+// JavaScript Lifecycle utility
+var Lifecycle = exports.Lifecycle = function() {
+  this.id = Math.random().toString(36).slice(1);
+
+  this.store = new Store('pebbleTermLifecycle', {
+    time: {
+      send: false,
+      storage: true,
+      value: 0,
+      limit: 15 * 60 * 1000,
+      get: function() {
+        return this.fix(this.value);
+      },
+      set: function(v) {
+        return (this.value = this.fix(v));
+      },
+      fix: function(v) {
+        return v - 0 || 0;
+      },
+      update: function() {
+        this.set(Date.now());
+      }
+    },
+    lastTime: {
+      send: false,
+      storage: true,
+      value: 0,
+      get: function() {
+        return this.fix(this.value);
+      },
+      set: function(v) {
+        return (this.value = this.fix(v));
+      },
+      fix: function(v) {
+        return v - 0 || 0;
+      },
+      update: function() {
+        this.set(Date.now());
+      }
+    },
+    id: {
+      send: false,
+      storage: true,
+      value: '',
+      get: function() {
+        return this.fix(this.value);
+      },
+      set: function(v) {
+        return (this.value = this.fix(v));
+      },
+      fix: function(v) {
+        return v;
+      }
+    },
+    cache: {
+      send: false,
+      storage: true,
+      value: '',
+      get: function() {
+        return this.fix(this.value);
+      },
+      set: function(v) {
+        return (this.value = this.fix(v));
+      },
+      fix: function(v) {
+        return v;
+      }
+    }
+  });
+};
+
+Lifecycle.prototype = {
+  store: null,
+  isRunning: function() {
+    this.store.load();
+
+    var time = this.store.time.get();
+    var id = this.store.id.get();
+
+    if (!id || id === this.id) {
+      return true;
+    }
+    return time > 0 && Date.now() - time < this.store.time.limit;
+  },
+  update: function() {
+    this.store.time.update();
+    this.store.id.set(this.id);
+    this.store.save();
+  },
+  ticking: false,
+  tickDisabled: false,
+  startTick: function() {
+    if (this.ticking) {
+      return;
+    }
+    this.ticking = true;
+
+    var self = this;
+    setTimeout(function tick_next() {
+      self.update();
+
+      if (!self.tickDisabled) {
+        setTimeout(tick_next, 5 * 1000);
+      } else {
+        self.ticking = false;
+        self.tickDisabled = false;
+      }
+    }, 0);
+  },
+  stopTick: function() {
+    this.tickDisabled = true;
   }
 };
 
@@ -510,13 +667,12 @@ Feed.TITLE_CHUNK_MAX_LEN = 17;
 Feed.prototype = {
   init: function(url) {
     this.url = url;
+    this.running = true;
     this.fetching = false;
     this.title = '';
     this.startTime = null;
     this.locked = null;
     this.stop = false;
-    this.transactionData = '';
-    this.transactionTitle = '';
   },
   parse: function(res) {
     var doc = new DOMParser().parseFromString(res, 'text/xml');
@@ -619,6 +775,9 @@ Feed.prototype = {
     var count = 2;
     var max = 2;
 
+    PebbleTerm.lifecycle.store.cache.set(title);
+    PebbleTerm.lifecycle.store.save();
+
     title = this.format(title);
 
     var send = function() {
@@ -669,7 +828,7 @@ Feed.prototype = {
       });
     });
   },
-  fetch: function() {
+  fetch: function(useCache) {
     var self = this;
 
     this.startTime = Date.now();
@@ -684,6 +843,18 @@ Feed.prototype = {
     this.fetching = true;
     this.title = this.truncate(message);
     this.sendTitle();
+
+    if (useCache) {
+      this.stop = false;
+
+      PebbleTerm.lifecycle.store.load();
+      var cache = PebbleTerm.lifecycle.store.cache.get() || 'Loading...';
+
+      return self.sendChunkedTitle(cache);
+    }
+
+    PebbleTerm.lifecycle.store.lastTime.update();
+    PebbleTerm.lifecycle.store.save();
 
     return request(this.url).then(function(res) {
       var title = self.parse(res);
@@ -705,7 +876,7 @@ Feed.prototype = {
       }
 
       var now = Date.now();
-      var d = Date.now() - self.startTime;
+      var d = now - self.startTime;
 
       if (d > PebbleTerm.store.feedInterval.get() * 1000) {
         return true;
@@ -721,6 +892,7 @@ Feed.prototype = {
       PebbleTerm.refetch = false;
 
       if (self.stop) {
+        self.running = false;
         return;
       }
 

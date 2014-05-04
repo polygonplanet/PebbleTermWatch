@@ -139,6 +139,7 @@ static int feed_lastindex;
 static bool feed_title_ready = false;
 static bool feed_title_sending = false;
 static bool can_fetch_feed = false;
+static bool feed_ready_sent = false;
 
 static bool feed_marquee_animating = false;
 static bool feed_marquee_animated = false;
@@ -421,10 +422,10 @@ static void fetch_feed(void) {
   send_msg(type_tuplet);
 }
 
-static void ready_feed(void) {
-  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, 3);
+static bool ready_feed(void) {
+  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, (uint8_t)3);
 
-  send_msg(type_tuplet);
+  return send_msg(type_tuplet);
 }
 
 static void set_time_anim() {
@@ -664,7 +665,6 @@ static void refresh_display_anim(void) {
   // start animation
   state = 0;
 
-  // reset display
   reset_display();
 }
 
@@ -848,6 +848,17 @@ static void term_sync_feed_enabled(uint8_t value) {
   }
 }
 
+static void feed_ready_send(void) {
+  if (!feed_ready_sent && firstRun
+      && initTime == 1 && settings.FeedEnabled) {
+    can_fetch_feed = true;
+
+    if (ready_feed()) {
+      feed_ready_sent = true;
+    }
+  }
+}
+
 static void sync_tuple_changed_callback(const uint32_t key,
                                         const Tuple* new_tuple,
                                         const Tuple* old_tuple,
@@ -864,6 +875,7 @@ static void sync_tuple_changed_callback(const uint32_t key,
       break;
     case FEED_ENABLED_KEY:
       term_sync_feed_enabled(new_tuple->value->uint8);
+      feed_ready_send();
       break;
     case FEED_URL_KEY:
       // nothing
@@ -922,12 +934,6 @@ static void tick_handler(struct tm *t, TimeUnits units_changed) {
   }
 
   reset_animation();
-
-  if (firstRun && initTime == 1 && settings.FeedEnabled) {
-    can_fetch_feed = true;
-    // send ready message to JavaScript
-    ready_feed();
-  }
 }
 
 // window lifecycle
@@ -1020,9 +1026,6 @@ static void window_load(Window *window) {
 
 
 static void window_unload(Window *window) {
-  // send message to close
-  send_close_msg();
-
   // date
   text_layer_destroy(date_label);
   text_layer_destroy(date_layer);
