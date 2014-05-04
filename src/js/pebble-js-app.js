@@ -684,7 +684,7 @@ Feed.prototype = {
     this.fetching = true;
     this.title = this.truncate(message);
     this.sendTitle();
-console.log('[' + Date.now() +'] fetch! url='+this.url);
+
     return request(this.url).then(function(res) {
       var title = self.parse(res);
 
