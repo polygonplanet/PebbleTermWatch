@@ -145,7 +145,7 @@
         },
         fix: function(v) {
           var url = ('' + v).replace(/^\s+|\s+$/g, '');
-          return /^https?:\/\/\w+/.test(url) ? url : '';
+          return /^https?:\/\/\w+/.test(url) ? encodeParams(url) : '';
         }
       },
       feedEnabled: {
@@ -227,11 +227,11 @@
       }
     };
 
-    var parseParams = function() {
+    var parseParams = function(url) {
       var params = {};
 
       var re = /[?&]+([^=&]+)=([^&]*)/g;
-      var uri = decodeURIComponent('' + window.location.href);
+      var uri = decodeURIComponent('' + url);
       var m;
 
       while ((m = re.exec(uri)) != null) {
@@ -240,6 +240,23 @@
 
       return params;
     };
+
+
+    var encodeParams = function(url) {
+      var isEncoded = function(s) {
+        return /^(?:[a-zA-Z0-9_~.-]|%[0-9a-fA-F]{2})*$/.test(s);
+      };
+
+      var encode = function(s) {
+        return isEncoded(s) ? s : encodeURIComponent(s);
+      };
+
+      url = ('' + (url || '')).replace(/\+/g, '%20');
+      return url.replace(/([?&]+)([^=&]+)=([^&]*)/g, function(match, sep, key, value) {
+        return sep + encode(key) + '=' + encode(value);
+      });
+    };
+
 
     var closeWin = function(data) {
       var uri = 'pebblejs://close#' + encodeURIComponent(JSON.stringify(data));
@@ -251,7 +268,7 @@
       // remove old item
       clearStorage();
 
-      var params = parseParams();
+      var params = parseParams(window.location.href);
 
       Object.keys(store).forEach(function(key) {
         var value = params[key];
