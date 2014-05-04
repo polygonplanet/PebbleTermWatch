@@ -227,11 +227,10 @@
       }
     };
 
-    var parseParams = function(url) {
+    var parseParams = function(uri) {
       var params = {};
 
       var re = /[?&]+([^=&]+)=([^&]*)/g;
-      var uri = decodeURIComponent('' + url);
       var m;
 
       while ((m = re.exec(uri)) != null) {
@@ -242,49 +241,9 @@
     };
 
 
-    var encodeParams = function(url) {
-      var isEncoded = function(s) {
-        return /^(?:[a-zA-Z0-9_~.-]|%[0-9a-fA-F]{2})*$/.test(s);
-      };
-
-      var encode = function(s) {
-        return isEncoded(s) ? s : encodeURIComponent(s);
-      };
-
-      url = ('' + (url || '')).replace(/\+/g, '%20');
-      return url.replace(/([?&]+)([^=&]+)=([^&]*)/g, function(match, sep, key, value) {
-        return sep + encode(key) + '=' + encode(value);
-      });
-    };
-
-
     var closeWin = function(data) {
       var uri = 'pebblejs://close#' + encodeURIComponent(JSON.stringify(data));
       window.location.href = uri;
-    };
-
-
-    var base64Encode = function(s) {
-      return window.btoa(unescape(encodeURIComponent(s)));
-    };
-
-    var base64Decode = function(s) {
-      return decodeURIComponent(escape(window.atob(s)));
-    };
-
-
-    var encodeStore = function(data) {
-      data = { pebbleTermStore: basse64Encode(JSON.stringify(data)) };
-      return encodeURIComponent(JSON.stringify(data));
-    };
-
-    var decodeStore = function(uri) {
-      var params = parseParams(uri);
-
-      if (params.pebbleTermStore) {
-        params = parseParams(base64Decode(params.pebbleTermStore));
-      }
-      return params;
     };
 
 
@@ -292,7 +251,7 @@
       // remove old item
       clearStorage();
 
-      var params = decodeStore(window.location.href);
+      var params = parseParams(window.location.href);
 
       Object.keys(store).forEach(function(key) {
         var value = params[key];
