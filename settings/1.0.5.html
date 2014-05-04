@@ -149,6 +149,9 @@
         },
         encode: function(v) {
           return encodeParams(v);
+        },
+        decode: function(v) {
+          return decodeURIComponent(v);
         }
       },
       feedEnabled: {
@@ -244,11 +247,11 @@
     };
 
 
-    var encodeParams = function(uri) {
-      var isEncoded = function(s) {
-        return /^(?:[a-zA-Z0-9_~.-]|%[0-9a-fA-F]{2})*$/.test(s);
-      };
+    var isEncoded = function(s) {
+      return /^(?:[a-zA-Z0-9_~.-]|%[0-9a-fA-F]{2})*$/.test(s);
+    };
 
+    var encodeParams = function(uri) {
       var encode = function(s) {
         return isEncoded(s) ? s : encodeURIComponent(s);
       };
@@ -274,6 +277,10 @@
       Object.keys(store).forEach(function(key) {
         var value = params[key];
         var field = store[key];
+
+        if (field.decode) {
+          value = field.decode(value);
+        }
 
         if (key in store && value != null) {
           field.value = field.fix(value);
