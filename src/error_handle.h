@@ -1,4 +1,4 @@
-
+/*
 char *translate_error(AppMessageResult result) {
   switch (result) {
     case APP_MSG_OK: return "APP_MSG_OK";
@@ -18,6 +18,7 @@ char *translate_error(AppMessageResult result) {
     default: return "UNKNOWN ERROR";
   }
 }
+*/
 
 static void sync_error_callback(DictionaryResult dict_error,
                                 AppMessageResult app_message_error,

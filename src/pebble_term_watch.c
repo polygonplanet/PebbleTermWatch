@@ -14,7 +14,7 @@
 #define TYPE_DELTA (200)
 #define PROMPT_DELTA (1000)
 #define MARQUEE_DELTA (500)
-#define SETTINGS_KEY (262)
+#define SETTINGS_KEY (61)
 
 static AppSync sync;
 static uint8_t sync_buffer[128];
@@ -74,9 +74,14 @@ static int startTime = 0;
 static int messageState = 0;
 
 static bool timerRegistered = false;
+static bool tickRegistered = false;
 
 static bool battery_charging = false;
 static bool reset_next_tick = false;
+static bool display_initialized = false;
+
+// font
+static GFont custom_font;
 
 // bluetooth
 static GBitmap *bluetooth_image;
@@ -117,6 +122,7 @@ const int TINY_IMAGE_RESOURCE_IDS[] = {
 #define MSG_TYPE_FEED_FETCHED ((uint8_t)4)
 #define MSG_TYPE_FEED_TITLE_START ((uint8_t)5)
 #define MSG_TYPE_FEED_TITLE_END ((uint8_t)6)
+#define MSG_TYPE_VIBE ((uint8_t)7)
 
 // time until to start marquee (seconds)
 #define FEED_WAIT_TIME_LIMIT (5)
@@ -129,8 +135,8 @@ const int TINY_IMAGE_RESOURCE_IDS[] = {
 #define FEED_TITLE_CHUNK_SIZE (17)
 #define FEED_TITLE_APPEND_MAX (8)
 
-static char feed_title[FEED_TITLE_CHUNK_SIZE];
-static char feed_prev_title[FEED_TITLE_CHUNK_SIZE];
+static char feed_title[18];
+static char feed_prev_title[18];
 static char feed_buffer[192];
 
 static int feed_index;
@@ -155,25 +161,22 @@ static bool feed_enabled_initialized = false;
 static bool feed_first_displayed = false;
 
 static int feed_enabled_init_count = 2;
-static bool feed_enabled_reload_locked = false;
 
 // Buffers
-//TODO: Display day ("Sun", "Mon" ...)
 static char date_buffer[] = "XXXX-XX-XX",
             hour_buffer[] = "XX:XX:XX",
-            // unixtime ("0" - "2147483647"?)
-            time_buffer[] = "XXXXXXXXXXXXXXX";
+            time_buffer[] = "XXXXXXXXXX";
 
 // State
 static int state = 0;
 static bool prompt_visible = false;
 
 // Prototypes
-static TextLayer* cl_init_text_layer(GRect location,
-                                     GColor colour,
-                                     GColor background,
-                                     ResHandle handle,
-                                     GTextAlignment alignment);
+static TextLayer* term_init_text_layer(GRect location,
+                                       GColor colour,
+                                       GColor background,
+                                       GFont font,
+                                       GTextAlignment alignment);
 
 static void set_container_image(GBitmap **bmp_image,
                                 BitmapLayer *bmp_layer,
@@ -306,34 +309,62 @@ void bluetooth_connection_callback(bool connected) {
 }
 
 // time lifecycle
-static void set_time(struct tm *t) {
-  // date
-  if (clock_is_24h_style()) {
-    strftime(hour_buffer, sizeof("XX:XX:XX"),"%H:%M:%S", t);
-  } else {
-    strftime(hour_buffer, sizeof("XX:XX:XX"),"%I:%M:%S", t);
-  }
-  text_layer_set_text(hour_layer, hour_buffer);
-
+static void set_date(struct tm *t) {
   strftime(date_buffer, sizeof("XXXX-XX-XX"), "%Y-%m-%d", t);
   text_layer_set_text(date_layer, date_buffer);
+}
 
+static void set_hour(struct tm *t) {
+  //XXX: clock_is_24h_style()
+  strftime(hour_buffer, sizeof("XX:XX:XX"), "%H:%M:%S", t);
+  text_layer_set_text(hour_layer, hour_buffer);
+}
+
+static void set_time(struct tm *t) {
   // unixtime
   // Pebble SDK 2 can't get timezone offset(?)
-  snprintf(time_buffer, sizeof("XXXXXXXXXXXXXXX"), "%u",
+  snprintf(time_buffer, sizeof("XXXXXXXXXX"), "%u",
            (unsigned)time(NULL) + settings.TimezoneOffset);
   text_layer_set_text(time_layer, time_buffer);
 }
 
-static void update_time() {
-  // Time structures
+static void update_date() {
   time_t ts = time(NULL);
   struct tm *t = localtime(&ts);
+
+  set_date(t);
+
+  if (startTime == 0) {
+    startTime = ts;
+  }
+}
+
+static void update_hour() {
+  time_t ts = time(NULL);
+  struct tm *t = localtime(&ts);
+
+  set_hour(t);
+
+  if (startTime == 0) {
+    startTime = ts;
+  }
+}
+
+static void update_time() {
+  time_t ts = time(NULL);
+  struct tm *t = localtime(&ts);
+
   set_time(t);
 
   if (startTime == 0) {
     startTime = ts;
   }
+}
+
+static void update_datetime() {
+  update_date();
+  update_hour();
+  update_time();
 }
 
 // feed animation
@@ -353,7 +384,7 @@ static void marquee_feed_title_reset(void) {
 }
 
 static void marquee_feed_title(void) {
-  if (!settings.FeedEnabled || feed_enabled_reload_locked) {
+  if (!settings.FeedEnabled) {
     return;
   }
 
@@ -432,7 +463,6 @@ static void set_time_anim() {
   // frame animation
   switch (state) {
     case 0:
-      update_time();
       timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
       break;
     case 1:
@@ -464,6 +494,10 @@ static void set_time_anim() {
       timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
       break;
     case 8:
+      if (settings.TypingAnimation) {
+        update_date();
+      }
+
       layer_add_child(window_get_root_layer(window), text_layer_get_layer(date_layer));
       text_layer_set_text(hour_label, "pebble>");
       timer = app_timer_register(5 * TYPE_DELTA, set_time_anim, 0);
@@ -497,6 +531,10 @@ static void set_time_anim() {
       timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
       break;
     case 16:
+      if (settings.TypingAnimation) {
+        update_hour();
+      }
+
       layer_add_child(window_get_root_layer(window), text_layer_get_layer(hour_layer));
       text_layer_set_text(time_label, "pebble>");
       timer = app_timer_register(5 * TYPE_DELTA, set_time_anim, 0);
@@ -526,6 +564,10 @@ static void set_time_anim() {
       timer = app_timer_register(TYPE_DELTA, set_time_anim, 0);
       break;
     case 23:
+      if (settings.TypingAnimation) {
+        update_time();
+      }
+
       layer_add_child(window_get_root_layer(window), text_layer_get_layer(time_layer));
 
       if (settings.FeedEnabled) {
@@ -589,7 +631,6 @@ static void set_time_anim() {
         state = 33;
       }
 
-      // Rest of the minute
       if (settings.FeedEnabled) {
         marquee_feed_title();
 
@@ -601,14 +642,6 @@ static void set_time_anim() {
             timer = app_timer_register(MARQUEE_DELTA, set_time_anim, 0);
             break;
           }
-        }
-      } else {
-        if (prompt_visible) {
-          prompt_visible = false;
-          layer_remove_from_parent(inverter_layer_get_layer(prompt_layer));
-        } else {
-          prompt_visible = true;
-          layer_add_child(window_get_root_layer(window), inverter_layer_get_layer(prompt_layer));
         }
       }
 
@@ -623,10 +656,6 @@ static void set_time_anim() {
         timer = app_timer_register(PROMPT_DELTA, set_time_anim, 0);
       }
       break;
-  }
-
-  if (state > 0 && !settings.TypingAnimation) {
-    update_time();
   }
 
   if (++messageState > MESSAGE_STATE_SEND) {
@@ -662,7 +691,7 @@ static void reset_display(void) {
 }
 
 static void refresh_display_anim(void) {
-  // start animation
+  // Start animation
   state = 0;
 
   reset_display();
@@ -687,7 +716,7 @@ static void reset_animation(void) {
 
 static void term_vibes_short_pulse(void) {
   if (battery_charging) {
-    // disabled on battery charging
+    // Disabled on battery charging
     return;
   }
 
@@ -697,35 +726,32 @@ static void term_vibes_short_pulse(void) {
     .durations = segments,
     .num_segments = ARRAY_LENGTH(segments),
   };
+
   vibes_enqueue_custom_pattern(pat);
 }
 
 // callback for settings
 static void term_sync_feed_start(void) {
-  if (feed_enabled_reload_locked) {
-    feed_title_ready = true;
-  } else if (!feed_title_sending) {
-    feed_title_ready = false;
-    feed_title_sending = true;
+  feed_title_ready = false;
+  feed_title_sending = true;
 
-    feed_wait_time = FEED_WAIT_TIME_LIMIT_LONG;
-    feed_append_len = 0;
-    feed_append_empty_count = 0;
+  feed_wait_time = FEED_WAIT_TIME_LIMIT_LONG;
+  feed_append_len = 0;
+  feed_append_empty_count = 0;
 
-    memset(feed_buffer, 0, sizeof(feed_buffer));
-    memset(feed_prev_title, 0, sizeof(feed_prev_title));
+  memset(feed_buffer, 0, sizeof(feed_buffer));
+  memset(feed_prev_title, 0, sizeof(feed_prev_title));
 
-    strncpy(feed_title, "Loading...       ", 17);
-    text_layer_set_text(feed_layer, feed_title);
-  }
+  strncpy(feed_title, "Loading...       ", 17);
+  text_layer_set_text(feed_layer, feed_title);
 }
 
 static void term_sync_feed_end(void) {
-  if (feed_enabled_reload_locked || !feed_title_sending) {
+  if (!feed_title_sending) {
     return;
   }
 
-  char buf[FEED_TITLE_CHUNK_SIZE];
+  char buf[FEED_TITLE_CHUNK_SIZE + 1];
 
   feed_title_sending = false;
 
@@ -749,10 +775,11 @@ static void term_sync_feed_end(void) {
 
   feed_title_ready = true;
 
-  // vibe
-  if (feed_first_displayed && settings.FeedVibe) {
-    term_vibes_short_pulse();
-  }
+  //FIXME: Vibration timing
+  //if (feed_first_displayed && settings.FeedVibe) {
+  //  // Vibe
+  //  term_vibes_short_pulse();
+  //}
 }
 
 static void sync_message_type(uint8_t msg_type) {
@@ -765,57 +792,64 @@ static void sync_message_type(uint8_t msg_type) {
     case MSG_TYPE_FEED_TITLE_END:
       term_sync_feed_end();
       break;
+    case MSG_TYPE_VIBE:
+      if (feed_first_displayed && settings.FeedVibe && feed_title_ready) {
+        feed_wait_time = FEED_WAIT_TIME_LIMIT;
+        feed_index = 0;
+        // Vibe
+        term_vibes_short_pulse();
+      }
+      break;
   }
 }
 
 static void term_sync_feed_title_append(const Tuple* new_tuple) {
-  if (!feed_enabled_reload_locked) {
-    if (!feed_title_sending) {
-      return;
-    }
+  if (!feed_title_sending) {
+    return;
+  }
 
-    if (feed_append_len > 0 && strlen(new_tuple->value->cstring) == 0) {
-      if (++feed_append_empty_count > FEED_APPEND_EMPTY_MAX) {
-        feed_append_empty_count = 0;
-        feed_append_len = FEED_MAX_TITLE_LEN;
-        term_sync_feed_end();
-        return;
-      }
-    }
-
-    if (feed_append_len + FEED_TITLE_CHUNK_SIZE > FEED_MAX_TITLE_LEN) {
+  if (feed_append_len > 0 && strlen(new_tuple->value->cstring) == 0) {
+    if (++feed_append_empty_count > FEED_APPEND_EMPTY_MAX) {
+      feed_append_empty_count = 0;
       feed_append_len = FEED_MAX_TITLE_LEN;
       term_sync_feed_end();
       return;
     }
-
-    if (strlen(new_tuple->value->cstring) == 0) {
-      return;
-    }
-
-    feed_append_empty_count = 0;
-
-    char s[FEED_TITLE_CHUNK_SIZE];
-
-    strncpy(s, new_tuple->value->cstring, FEED_TITLE_CHUNK_SIZE);
-
-    // Skip duplicate title
-    if (strncmp(s, feed_prev_title, FEED_TITLE_CHUNK_SIZE) == 0) {
-      return;
-    }
-
-    strncpy(feed_prev_title, s, FEED_TITLE_CHUNK_SIZE);
-    strncat(feed_buffer, s, FEED_TITLE_CHUNK_SIZE);
-
-    feed_append_len += FEED_TITLE_CHUNK_SIZE;
   }
+
+  if (feed_append_len + FEED_TITLE_CHUNK_SIZE > FEED_MAX_TITLE_LEN) {
+    feed_append_len = FEED_MAX_TITLE_LEN;
+    term_sync_feed_end();
+    return;
+  }
+
+  if (strlen(new_tuple->value->cstring) == 0) {
+    return;
+  }
+
+  feed_append_empty_count = 0;
+
+  char s[FEED_TITLE_CHUNK_SIZE + 1];
+
+  strncpy(s, new_tuple->value->cstring, FEED_TITLE_CHUNK_SIZE);
+  s[FEED_TITLE_CHUNK_SIZE] = '\0';
+
+  // Skip duplicate title
+  if (strncmp(s, feed_prev_title, FEED_TITLE_CHUNK_SIZE) == 0) {
+    return;
+  }
+
+  strncpy(feed_prev_title, s, FEED_TITLE_CHUNK_SIZE);
+  strncat(feed_buffer, s, FEED_TITLE_CHUNK_SIZE);
+
+  feed_append_len += FEED_TITLE_CHUNK_SIZE;
 }
 
 static void term_sync_feed_enabled(uint8_t value) {
   prevFeedEnabled = settings.FeedEnabled;
   settings.FeedEnabled = value;
 
-  // Must reload display if Feed URL changed
+  // Reload display if Feed URL changed
   if (!feed_enabled_initialized) {
     if (--feed_enabled_init_count <= 0) {
       feed_enabled_init_count = 0;
@@ -829,6 +863,8 @@ static void term_sync_feed_enabled(uint8_t value) {
     }
   } else {
     if (settings.FeedEnabled != prevFeedEnabled) {
+
+      //TODO: reload
       if (settings.FeedEnabled
           && !prevFeedEnabled && !feed_title_sending) {
 
@@ -836,10 +872,10 @@ static void term_sync_feed_enabled(uint8_t value) {
         strncpy(feed_title, feed_buffer, 17);
 
         text_layer_set_text(feed_layer, feed_title);
-
-        feed_enabled_reload_locked = true;
         feed_index = 0;
         feed_title_ready = true;
+
+        ready_feed();
       }
 
       reset_next_tick = true;
@@ -881,7 +917,7 @@ static void sync_tuple_changed_callback(const uint32_t key,
       // nothing
       break;
     case MSG_TYPE_KEY:
-      // message from JavaScript
+      // Message from JavaScript
       sync_message_type(new_tuple->value->uint8);
       break;
     case FEED_TITLE_KEY:
@@ -904,7 +940,7 @@ static void out_failed_handler(DictionaryIterator *failed, AppMessageResult reas
 static void in_received_handler(DictionaryIterator *iter, void *context) {
 }
 
-static void tick_handler(struct tm *t, TimeUnits units_changed) {
+static void update_display_time() {
   bool reset = false;
 
   switch (initTime) {
@@ -913,7 +949,7 @@ static void tick_handler(struct tm *t, TimeUnits units_changed) {
         reset = true;
       }
       break;
-    case 1: // init
+    case 1: // initializing
       if (firstRun && !timerRegistered) {
         reset = true;
       }
@@ -936,92 +972,122 @@ static void tick_handler(struct tm *t, TimeUnits units_changed) {
   reset_animation();
 }
 
+static void tick_handler(struct tm *t, TimeUnits units_changed) {
+  if (!display_initialized || t->tm_sec == 0) {
+    display_initialized = true;
+    update_display_time();
+  }
+
+  if (state > 0 && !settings.TypingAnimation) {
+    update_datetime();
+  }
+
+  if (state >= 33 && !settings.FeedEnabled) {
+    if (prompt_visible) {
+      prompt_visible = false;
+      layer_remove_from_parent(inverter_layer_get_layer(prompt_layer));
+    } else {
+      prompt_visible = true;
+      layer_add_child(window_get_root_layer(window), inverter_layer_get_layer(prompt_layer));
+    }
+  }
+}
+
 // window lifecycle
 
 static void window_load(Window *window) {
   // font
-  ResHandle font_handle = resource_get_handle(RESOURCE_ID_FONT_LUCIDA_13);
+  custom_font = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_DROID_13));
 
   // date
-  date_label = cl_init_text_layer(GRect(5, 24, 144, 30),
-                                  GColorWhite,
-                                  GColorClear,
-                                  font_handle,
-                                  GTextAlignmentLeft);
+  date_label = term_init_text_layer(GRect(5, 24, 144, 30),
+                                    GColorWhite,
+                                    GColorClear,
+                                    custom_font,
+                                    GTextAlignmentLeft);
   text_layer_set_text(date_label, "");
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(date_label));
 
-  date_layer = cl_init_text_layer(GRect(5, 40, 144, 30),
-                                  GColorWhite,
-                                  GColorClear,
-                                  font_handle,
-                                  GTextAlignmentLeft);
+  date_layer = term_init_text_layer(GRect(5, 40, 144, 30),
+                                    GColorWhite,
+                                    GColorClear,
+                                    custom_font,
+                                    GTextAlignmentLeft);
   text_layer_set_text(date_layer, "");
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(date_layer));
 
   // hour
-  hour_label = cl_init_text_layer(GRect(5, 55, 144, 30),
-                                  GColorWhite,
-                                  GColorClear,
-                                  font_handle,
-                                  GTextAlignmentLeft);
+  hour_label = term_init_text_layer(GRect(5, 55, 144, 30),
+                                    GColorWhite,
+                                    GColorClear,
+                                    custom_font,
+                                    GTextAlignmentLeft);
   text_layer_set_text(hour_label, "");
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(hour_label));
 
-  hour_layer = cl_init_text_layer(GRect(5, 71, 144, 30),
-                                  GColorWhite,
-                                  GColorClear,
-                                  font_handle,
-                                  GTextAlignmentLeft);
+  hour_layer = term_init_text_layer(GRect(5, 71, 144, 30),
+                                    GColorWhite,
+                                    GColorClear,
+                                    custom_font,
+                                    GTextAlignmentLeft);
   text_layer_set_text(hour_layer, "");
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(hour_layer));
 
   // time
-  time_label = cl_init_text_layer(GRect(5, 87, 144, 30),
-                                  GColorWhite,
-                                  GColorClear,
-                                  font_handle,
-                                  GTextAlignmentLeft);
+  time_label = term_init_text_layer(GRect(5, 87, 144, 30),
+                                    GColorWhite,
+                                    GColorClear,
+                                    custom_font,
+                                    GTextAlignmentLeft);
   text_layer_set_text(time_label, "");
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(time_label));
 
-  time_layer = cl_init_text_layer(GRect(5, 103, 144, 30),
-                                  GColorWhite,
-                                  GColorClear,
-                                  font_handle,
-                                  GTextAlignmentLeft);
+  time_layer = term_init_text_layer(GRect(5, 103, 144, 30),
+                                    GColorWhite,
+                                    GColorClear,
+                                    custom_font,
+                                    GTextAlignmentLeft);
   text_layer_set_text(time_layer, "");
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(time_layer));
 
   // prompt
-  prompt_label = cl_init_text_layer(GRect(5, 119, 144, 30),
-                                    GColorWhite,
-                                    GColorClear,
-                                    font_handle,
-                                    GTextAlignmentLeft);
+  prompt_label = term_init_text_layer(GRect(5, 119, 144, 30),
+                                      GColorWhite,
+                                      GColorClear,
+                                      custom_font,
+                                      GTextAlignmentLeft);
   text_layer_set_text(prompt_label, "");
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(prompt_label));
 
   prompt_layer = inverter_layer_create(GRect(61, 132, 8, 2));
 
   // feed
-  feed_label = cl_init_text_layer(GRect(5, 119, 144, 30),
-                                  GColorWhite,
-                                  GColorClear,
-                                  font_handle,
-                                  GTextAlignmentLeft);
+  feed_label = term_init_text_layer(GRect(5, 119, 144, 30),
+                                    GColorWhite,
+                                    GColorClear,
+                                    custom_font,
+                                    GTextAlignmentLeft);
   text_layer_set_text(feed_label, "");
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(feed_label));
 
-  feed_layer = cl_init_text_layer(GRect(5, 135, 144, 30),
-                                  GColorWhite,
-                                  GColorClear,
-                                  font_handle,
-                                  GTextAlignmentLeft);
+  feed_layer = term_init_text_layer(GRect(5, 135, 144, 30),
+                                    GColorWhite,
+                                    GColorClear,
+                                    custom_font,
+                                    GTextAlignmentLeft);
 
   text_layer_set_text(feed_layer, "");
   layer_set_hidden(text_layer_get_layer(feed_layer), true);
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(feed_layer));
+
+  if (!tickRegistered) {
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    tick_handler(t, MINUTE_UNIT);
+    tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
+
+    tickRegistered = true;
+  }
 }
 
 
@@ -1045,11 +1111,6 @@ static void window_unload(Window *window) {
   // feed
   text_layer_destroy(feed_label);
   text_layer_destroy(feed_layer);
-
-  if (timer != NULL) {
-    app_timer_cancel(timer);
-    timerRegistered = false;
-  }
 }
 
 // app lifecycle
@@ -1083,9 +1144,6 @@ static void init(void) {
 
   window_set_window_handlers(window, handlers);
   window_set_background_color(window, GColorBlack);
-
-  // Get tick events
-  tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
 
   // bluetooth
   bluetooth_image = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_BLUETOOTH);
@@ -1167,12 +1225,20 @@ static void deinit(void) {
 
   bluetooth_connection_service_unsubscribe();
   battery_state_service_unsubscribe();
-  tick_timer_service_unsubscribe();
+
+  if (tickRegistered) {
+    tick_timer_service_unsubscribe();
+  }
 
   layer_remove_from_parent(bitmap_layer_get_layer(background_layer));
   bitmap_layer_destroy(background_layer);
   gbitmap_destroy(background_image);
   background_image = NULL;
+
+  layer_remove_from_parent(bitmap_layer_get_layer(branding_mask_layer));
+  bitmap_layer_destroy(branding_mask_layer);
+  gbitmap_destroy(branding_mask_image);
+  branding_mask_image = NULL;
 
   layer_remove_from_parent(bitmap_layer_get_layer(bluetooth_layer));
   bitmap_layer_destroy(bluetooth_layer);
@@ -1183,8 +1249,6 @@ static void deinit(void) {
   bitmap_layer_destroy(battery_layer);
   gbitmap_destroy(battery_image);
   battery_image = NULL;
-
-  background_image = NULL;
 
   layer_remove_from_parent(bitmap_layer_get_layer(battery_image_layer));
   bitmap_layer_destroy(battery_image_layer);
@@ -1197,9 +1261,9 @@ static void deinit(void) {
     battery_percent_layers[i] = NULL;
   }
 
-  layer_remove_from_parent(window_layer);
-  layer_destroy(window_layer);
+  fonts_unload_custom_font(custom_font);
 
+  window_stack_pop_all(true);
   window_destroy(window);
 }
 
@@ -1211,16 +1275,16 @@ int main(void) {
 
 // Other functions
 
-static TextLayer* cl_init_text_layer(GRect location,
-                                     GColor colour,
-                                     GColor background,
-                                     ResHandle handle,
-                                     GTextAlignment alignment) {
+static TextLayer* term_init_text_layer(GRect location,
+                                       GColor colour,
+                                       GColor background,
+                                       GFont font,
+                                       GTextAlignment alignment) {
 
   TextLayer *layer = text_layer_create(location);
   text_layer_set_text_color(layer, colour);
   text_layer_set_background_color(layer, background);
-  text_layer_set_font(layer, fonts_load_custom_font(handle));
+  text_layer_set_font(layer, font);
   text_layer_set_text_alignment(layer, alignment);
 
   return layer;

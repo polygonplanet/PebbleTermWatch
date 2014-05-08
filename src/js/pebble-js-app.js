@@ -14,6 +14,7 @@ var MSG_TYPE_FEED_READY = 3;
 var MSG_TYPE_FEED_FETCHED = 4;
 var MSG_TYPE_FEED_TITLE_START = 5;
 var MSG_TYPE_FEED_TITLE_END = 6;
+var MSG_TYPE_VIBE = 7;
 
 
 (function(global, exports, require) {
@@ -21,10 +22,10 @@ var MSG_TYPE_FEED_TITLE_END = 6;
 
 var Store = require('store');
 var Feed = require('feed');
-var util = require('util');
 var PebbleTerm = require('pebbleterm');
 var AppMessage = require('appmessage');
 var Lifecycle = require('lifecycle');
+var util = require('util');
 
 var lifecycle = new Lifecycle();
 var store, feed;
@@ -43,10 +44,10 @@ util.mixin(PebbleTerm, {
 util.mixin(AppMessage, {
   sendStore: function(msg) {
     store.update(msg);
-    AppMessage.send.call(this, store.toObject('send'));
+    return AppMessage.send.call(this, store.toObject('send'));
   },
   ping: function() {
-    AppMessage.sendStore.call(this, { msgType: MSG_TYPE_PING });
+    return AppMessage.sendStore.call(this, { msgType: MSG_TYPE_PING });
   }
 });
 
@@ -91,9 +92,8 @@ Pebble.addEventListener('appmessage', function(e) {
       case MSG_TYPE_PING:
         break;
       case MSG_TYPE_APP_CLOSE:
-        //TODO: Cannot get message
+        //TODO: Cannot get close message
         PebbleTerm.closed = true;
-
         if (feed) {
           feed.stop = true;
         }
@@ -103,6 +103,10 @@ Pebble.addEventListener('appmessage', function(e) {
       case MSG_TYPE_FEED_READY:
         if (!feed || !feed.url) {
           PebbleTerm.useCache = true;
+
+          if (init && !init.running) {
+            init();
+          }
         }
         break;
       case MSG_TYPE_FEED_FETCHED:
@@ -185,7 +189,7 @@ store = PebbleTerm.store = new Store('pebbleTerm', {
     },
     fix: function(v) {
       var url = ('' + v).replace(/^\s+|\s+$/g, '');
-      return /^https?:\/\/\w+/.test(url) ? url : '';
+      return /^https?:\/\/\w/.test(url) ? url : '';
     }
   },
   feedEnabled: {
@@ -260,7 +264,12 @@ store = PebbleTerm.store = new Store('pebbleTerm', {
 });
 
 
-(function init_lifecycle() {
+var init = function() {
+  if (init.running) {
+    return;
+  }
+  init.running = 1;
+
   var startTime = Date.now();
 
   // Pebble JavaScript SDK lifecycle interval (3 minutes?)
@@ -282,33 +291,43 @@ store = PebbleTerm.store = new Store('pebbleTerm', {
         return false;
       }
 
-      PebbleTerm.lifecycle.store.load();
-      var lastFetchTime = PebbleTerm.lifecycle.store.lastTime.get();
-      var interval = PebbleTerm.store.feedInterval.get() * 1000;
+      if (store.feedEnabled.get()) {
+        PebbleTerm.lifecycle.store.load();
+        var lastFetchTime = PebbleTerm.lifecycle.store.lastTime.get();
+        var interval = PebbleTerm.store.feedInterval.get() * 1000;
 
-      if (!lastFetchTime || Date.now() - lastFetchTime > interval) {
-        return true;
+        if (!lastFetchTime || Date.now() - lastFetchTime > interval) {
+          return true;
+        }
       }
     }
 
     return false;
   }, 1000).then(function() {
     if (timeout) {
+      init.running = false;
       return;
     }
+
+    if (init.running > 1) {
+      return;
+    }
+    init.running = 2;
 
     var url = store.feedUrl.get();
 
     if (url) {
-      var useCache = PebbleTerm.useCache;
-
-      if (lifecycle.isRunning() || useCache) {
+      if (!lifecycle.isRunning() || PebbleTerm.useCache) {
         feed = PebbleTerm.feed = new Feed(url);
-        feed.fetch(useCache);
+        feed.fetch();
       }
+    } else {
+      init.running = false;
     }
   });
-}());
+};
+
+init();
 
 
 }).apply(this, (function(global, exports, require) {
@@ -505,6 +524,8 @@ var Lifecycle = exports.Lifecycle = function() {
 
 Lifecycle.prototype = {
   store: null,
+  // Checks whether is running last process
+  // false: not running
   isRunning: function() {
     this.store.load();
 
@@ -512,7 +533,7 @@ Lifecycle.prototype = {
     var id = this.store.id.get();
 
     if (!id || id === this.id) {
-      return true;
+      return false;
     }
     return time > 0 && Date.now() - time < this.store.time.limit;
   },
@@ -555,8 +576,7 @@ var AppMessage = exports.AppMessage = {
   queue: [],
   timers: Object.create(null),
   transactions: Object.create(null),
-  //TODO: fix retry
-  retryEnabled: false,
+  processing: false,
 
   clear: function(id) {
     if (id in AppMessage.timers) {
@@ -567,59 +587,77 @@ var AppMessage = exports.AppMessage = {
   clearAll: function() {
     Object.keys(AppMessage.timers).forEach(AppMessage.clear);
   },
-  retry: function() {
-    var args = AppMessage.queue.shift();
+  send: function(msg) {
+    var context = this;
 
-    if (!AppMessage.retryEnabled) {
-      return;
-    }
+    return new Promise(function(resolve, reject) {
+      var locked = AppMessage.locked;
 
-    if (args && args.message) {
-      if (Date.now() - args.time > AppMessage.RETRY_EXPIRE) {
+      if (locked && context && context.locked === locked) {
+        locked = false;
+      }
+
+      if (locked) {
+        reject();
         return;
       }
 
-      var id = setTimeout(function() {
-        delete AppMessage.timers[id];
+      var ackHandler = function(ev) {
+        var id = ev.data.transactionId;
+        AppMessage.queue.shift();
+        delete AppMessage.transactions[id];
+        AppMessage.processing = false;
+        resolve();
+      };
 
-        AppMessage.send.apply(args.context, args.message);
-      }, AppMessage.RETRY_DELAY);
+      var nackHandler = function(ev) {
+        var id = ev.data.transactionId;
+        AppMessage.transactions[id] = id;
+        retry();
+      };
 
-      AppMessage.timers[id] = id;
-    }
-  },
-  ackHandler: function(ev) {
-    var id = ev.data.transactionId;
+      var send = function() {
+        AppMessage.processing = true;
+        AppMessage.queue.push({
+          context: context,
+          message: msg,
+          time: Date.now()
+        });
+        Pebble.sendAppMessage.apply(Pebble, [msg, ackHandler, nackHandler]);
+      };
 
-    AppMessage.queue.shift();
-    delete AppMessage.transactions[id];
-  },
-  nackHandler: function(ev) {
-    var id = ev.data.transactionId;
+      var retry = function() {
+        var args = AppMessage.queue.shift();
 
-    AppMessage.transactions[id] = id;
-    AppMessage.retry();
-  },
-  send: function(msg) {
-    var context = this;
-    var locked = AppMessage.locked;
+        // Currently, testing within lock
+        if (!AppMessage.locked) {
+          AppMessage.processing = false;
+          reject();
+          return;
+        }
 
-    if (locked && context && context.locked === locked) {
-      locked = false;
-    }
+        if (args && args.message) {
+          if (Date.now() - args.time > AppMessage.RETRY_EXPIRE) {
+            AppMessage.processing = false;
+            reject();
+            return;
+          }
 
-    if (locked) {
-      return;
-    }
+          var id = setTimeout(function() {
+            delete AppMessage.timers[id];
+            send();
+          }, AppMessage.RETRY_DELAY);
 
-    AppMessage.queue.push({
-      context: context,
-      message: msg,
-      time: Date.now()
+          AppMessage.timers[id] = id;
+        }
+      };
+
+      till(function() {
+        return !AppMessage.processing;
+      }).then(function() {
+        send();
+      });
     });
-
-    Pebble.sendAppMessage.apply(Pebble, [
-      msg, AppMessage.ackHandler, AppMessage.nackHandler]);
   },
   lock: (function() {
     var ids = Object.create(null);
@@ -660,7 +698,7 @@ var Feed = exports.Feed = function(url) {
 };
 
 Feed.WAIT_INTERVAL = 1000;
-Feed.PING_INTERVAL = 10000;
+Feed.PING_INTERVAL = 10 * 1000;
 Feed.TITLE_MAX_LEN = 128;
 Feed.TITLE_CHUNK_MAX_LEN = 17;
 
@@ -685,7 +723,7 @@ Feed.prototype = {
     var title = items[0].getElementsByTagName('title');
 
     if (title.length === 0) {
-      return 'Item has no title';
+      return 'No title';
     }
 
     return title[0].textContent;
@@ -732,7 +770,7 @@ Feed.prototype = {
   sendTitle: function(title) {
     this.updateTitle(title);
 
-    PebbleTerm.AppMessage.send.call(this,
+    return PebbleTerm.AppMessage.send.call(this,
       PebbleTerm.store.toObject('send'));
   },
   updateTitle: function(title) {
@@ -767,92 +805,154 @@ Feed.prototype = {
       });
     });
   },
-  sendChunkedTitle: function(title) {
+  sendChunkedTitle: function(title, isCache, isError) {
     var self = this;
-
     var data = '';
     var index = 0;
     var count = 2;
     var max = 2;
+    var cache;
+    var vibe = false;
 
-    PebbleTerm.lifecycle.store.cache.set(title);
-    PebbleTerm.lifecycle.store.save();
+    if (!isCache && !isError) {
+      PebbleTerm.lifecycle.store.load();
+      cache = PebbleTerm.lifecycle.store.cache.get();
+
+      if (cache && cache !== title && !/^cache:/.test(title)) {
+        vibe = true;
+      }
+
+      PebbleTerm.lifecycle.store.cache.set(title);
+      PebbleTerm.lifecycle.store.save();
+    }
 
     title = this.format(title);
+
+    var open = function() {
+      return new Promise(function(resolve, reject) {
+        PebbleTerm.AppMessage.sendStore.call(self, {
+          msgType: MSG_TYPE_FEED_TITLE_START,
+          feedTitle: ''
+        }).then(function() {
+          self.clear();
+          resolve();
+        }, function() {
+          self.clear();
+          reject();
+        });
+      });
+    };
+
+    var close = function() {
+      return new Promise(function(resolve, reject) {
+        PebbleTerm.AppMessage.sendStore.call(self, {
+          msgType: MSG_TYPE_FEED_TITLE_END,
+          feedTitle: ''
+        }).then(function() {
+          self.clear();
+          resolve();
+        }, function() {
+          self.clear();
+          reject();
+        });
+      });
+    };
+
+    var sendVibe = function() {
+      return new Promise(function(resolve, reject) {
+        PebbleTerm.AppMessage.sendStore.call(self, {
+          msgType: vibe ? MSG_TYPE_VIBE : MSG_TYPE_PING,
+          feedTitle: ''
+        }).then(function() {
+          self.clear();
+          resolve();
+        }, function() {
+          self.clear();
+          reject();
+        });
+      });
+    };
 
     var send = function() {
       if (++count > max) {
         count = 0;
         index += data.length;
-
         return false;
       }
 
       data = self.truncate(title, index);
 
       if (!data) {
-        PebbleTerm.AppMessage.sendStore.call(self, {
-          msgType: MSG_TYPE_FEED_TITLE_END,
-          feedTitle: ''
-        });
-
-        self.clear();
         return true;
       }
 
-      self.sendTitle(data);
-      self.clear();
+      return new Promise(function(resolve, reject) {
+        self.sendTitle(data).then(function() {
+          reject(); // continue
+          self.clear();
+        }, function() {
+          reject();
+          self.clear();
+        });
+      });
+    };
 
-      return false;
+    var process = function() {
+      till(function() {
+        return send();
+      }, 200).then(function() {
+        close().then(function() {
+          sendVibe().then(unlock, unlock);
+        }, unlock);
+      });
+    };
+
+    var unlock = function() {
+      self.unlockMsg().then(function() {
+        self.fetching = false;
+
+        if (!self.stop) {
+          self.refetch();
+        }
+      });
     };
 
     this.lockMsg().then(function() {
-      self.clear();
-
-      PebbleTerm.AppMessage.sendStore.call(self, {
-        msgType: MSG_TYPE_FEED_TITLE_START,
-        feedTitle: ''
-      });
-      self.clear();
-
-      till(function() {
-        return send();
-      }, 500).then(function() {
-        self.unlockMsg().then(function() {
-          self.fetching = false;
-
-          if (!self.stop) {
-            self.refetch();
-          }
-        });
+      delay(1000).then(function() {
+        self.clear();
+        open().then(process, process);
       });
     });
   },
-  fetch: function(useCache) {
+  fetch: function() {
     var self = this;
 
     this.startTime = Date.now();
     if (PebbleTerm.closed || this.fetching) {
-      return new Promise(function() {
-        throw 'Cannot fetch feed';
+      return new Promise(function(resolve, reject) {
+        reject('Cannot fetch feed');
       });
     }
 
+    //TODO: send loading message
     var message = 'Loading ' + this.url.split('//').pop();
 
     this.fetching = true;
     this.title = this.truncate(message);
     this.sendTitle();
 
-    if (useCache) {
+    if (PebbleTerm.useCache) {
       this.stop = false;
 
       PebbleTerm.lifecycle.store.load();
-      var cache = PebbleTerm.lifecycle.store.cache.get() || 'Loading...';
+      var cache = PebbleTerm.lifecycle.store.cache.get();
 
-      return self.sendChunkedTitle(cache);
+      if (cache && !/^Loading[.]*$/.test(cache)) {
+        return self.sendChunkedTitle('cache: ' + cache, true);
+      }
     }
 
+    // Update last fetched time
     PebbleTerm.lifecycle.store.lastTime.update();
     PebbleTerm.lifecycle.store.save();
 
@@ -863,7 +963,7 @@ Feed.prototype = {
       self.sendChunkedTitle(title);
     }, function(err) {
       self.stop = true;
-      self.sendChunkedTitle('Error:' + err);
+      self.sendChunkedTitle('Error: ' + err, false, true);
     });
   },
   refetch: function() {
@@ -882,6 +982,15 @@ Feed.prototype = {
         return true;
       }
 
+      if (PebbleTerm.useCache) {
+        PebbleTerm.lifecycle.store.load();
+        var lastFetchTime = PebbleTerm.lifecycle.store.lastTime.get();
+
+        if (d > lastFetchTime && !PebbleTerm.lifecycle.isRunning()) {
+          return true;
+        }
+      }
+
       if (now - t > Feed.PING_INTERVAL) {
         t = now;
         PebbleTerm.AppMessage.ping();
@@ -890,6 +999,7 @@ Feed.prototype = {
       return false;
     }, Feed.WAIT_INTERVAL).then(function() {
       PebbleTerm.refetch = false;
+      PebbleTerm.useCache = false;
 
       if (self.stop) {
         self.running = false;
@@ -954,16 +1064,37 @@ var delay = exports.util.delay = function(time) {
 var till = exports.util.till = function(cond, interval) {
   interval = interval || 13;
 
-  return new Promise(function till_next(resolve) {
+  return new Promise(function till_next(resolve, reject) {
     var args = arguments;
     var time = Date.now();
 
-    if (cond()) {
-      resolve();
-    } else {
+    var next = function() {
       delay(Math.min(1000, Date.now() - time + interval)).then(function() {
         till_next.apply(null, args);
       });
+    };
+    var res;
+
+    try {
+      res = cond();
+    } catch (e) {
+      reject(e);
+      return;
+    }
+
+    if (!res) {
+      next();
+      return;
+    }
+
+    if (res instanceof Promise) {
+      res.then(function() {
+        resolve();
+      }, function() {
+        next();
+      });
+    } else {
+      resolve();
     }
   });
 };

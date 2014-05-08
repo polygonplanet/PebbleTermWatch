@@ -1,130 +1,130 @@
 {
-    "longName": "Pebble Term Watch",
-    "companyName": "polygon planet",
-    "versionLabel": "1.0.5",
-    "watchapp": {
-        "watchface": true
-    },
-    "appKeys": {
-        "feedTitle": 6,
-        "feedInterval": 8,
-        "feedUrl": 4,
-        "bluetoothVibe": 0,
-        "msgType": 5,
-        "timezoneOffset": 2,
-        "typingAnimation": 1,
-        "feedEnabled": 3,
-        "feedVibe": 7
-    },
+    "uuid": "4e36e415-af6f-4cf9-a7f5-bf709e69c68c",
     "resources": {
         "media": [
             {
-                "file": "images/icon_pebble_term_watch_small.png",
                 "name": "IMAGE_APP_ICON",
                 "type": "png",
-                "menuIcon": true
+                "menuIcon": true,
+                "file": "images/icon_pebble_term_watch_small.png"
             },
             {
-                "file": "images/icon_bluetooth.png",
                 "name": "IMAGE_BLUETOOTH",
-                "type": "png"
+                "type": "png",
+                "file": "images/icon_bluetooth.png"
             },
             {
-                "file": "images/background-image-invert.png",
                 "name": "IMAGE_BACKGROUND_INVERT",
-                "type": "png"
+                "type": "png",
+                "file": "images/background-image-invert.png"
             },
             {
-                "file": "images/background-image.png",
                 "name": "IMAGE_BACKGROUND",
-                "type": "png"
+                "type": "png",
+                "file": "images/background-image.png"
             },
             {
-                "file": "images/branding-mask-invert.png",
                 "name": "IMAGE_BRANDING_MASK_INVERT",
-                "type": "png"
+                "type": "png",
+                "file": "images/branding-mask-invert.png"
             },
             {
-                "file": "images/branding-mask.png",
                 "name": "IMAGE_BRANDING_MASK",
-                "type": "png"
+                "type": "png",
+                "file": "images/branding-mask.png"
             },
             {
-                "file": "images/tiny_percent.png",
                 "name": "IMAGE_TINY_PERCENT",
-                "type": "png"
+                "type": "png",
+                "file": "images/tiny_percent.png"
             },
             {
-                "file": "images/tiny_9.png",
                 "name": "IMAGE_TINY_9",
-                "type": "png"
+                "type": "png",
+                "file": "images/tiny_9.png"
             },
             {
-                "file": "images/tiny_8.png",
                 "name": "IMAGE_TINY_8",
-                "type": "png"
+                "type": "png",
+                "file": "images/tiny_8.png"
             },
             {
-                "file": "images/tiny_7.png",
                 "name": "IMAGE_TINY_7",
-                "type": "png"
+                "type": "png",
+                "file": "images/tiny_7.png"
             },
             {
-                "file": "images/tiny_6.png",
                 "name": "IMAGE_TINY_6",
-                "type": "png"
+                "type": "png",
+                "file": "images/tiny_6.png"
             },
             {
-                "file": "images/tiny_5.png",
                 "name": "IMAGE_TINY_5",
-                "type": "png"
+                "type": "png",
+                "file": "images/tiny_5.png"
             },
             {
-                "file": "images/tiny_4.png",
                 "name": "IMAGE_TINY_4",
-                "type": "png"
+                "type": "png",
+                "file": "images/tiny_4.png"
             },
             {
-                "file": "images/tiny_3.png",
                 "name": "IMAGE_TINY_3",
-                "type": "png"
+                "type": "png",
+                "file": "images/tiny_3.png"
             },
             {
-                "file": "images/tiny_2.png",
                 "name": "IMAGE_TINY_2",
-                "type": "png"
+                "type": "png",
+                "file": "images/tiny_2.png"
             },
             {
-                "file": "images/tiny_1.png",
                 "name": "IMAGE_TINY_1",
-                "type": "png"
+                "type": "png",
+                "file": "images/tiny_1.png"
             },
             {
-                "file": "images/tiny_0.png",
                 "name": "IMAGE_TINY_0",
-                "type": "png"
+                "type": "png",
+                "file": "images/tiny_0.png"
             },
             {
-                "file": "images/icon_battery_charge.png",
                 "name": "IMAGE_BATTERY_CHARGE",
-                "type": "png"
+                "type": "png",
+                "file": "images/icon_battery_charge.png"
             },
             {
-                "file": "images/icon_battery.png",
                 "name": "IMAGE_BATTERY",
-                "type": "png"
+                "type": "png",
+                "file": "images/icon_battery.png"
             },
             {
-                "file": "fonts/lucida.ttf",
-                "name": "FONT_LUCIDA_13",
-                "type": "font"
+                "name": "FONT_DROID_13",
+                "type": "font",
+                "file": "fonts/DroidSansMono.ttf"
             }
         ]
     },
-    "uuid": "4e36e415-af6f-4cf9-a7f5-bf709e69c68c",
     "capabilities": [
         "configurable"
     ],
+    "companyName": "polygon planet",
     "shortName": "Pebble Term",
-    "versionCode": 1
+    "longName": "Pebble Term Watch",
+    "watchapp": {
+        "watchface": true
+    },
+    "versionCode": 1,
+    "appKeys": {
+        "typingAnimation": 1,
+        "msgType": 5,
+        "feedUrl": 4,
+        "timezoneOffset": 2,
+        "feedTitle": 6,
+        "feedInterval": 8,
+        "feedEnabled": 3,
+        "feedVibe": 7,
+        "bluetoothVibe": 0
+    },
+    "versionLabel": "1.0.6"
 }
