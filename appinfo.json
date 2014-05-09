@@ -1,130 +1,130 @@
 {
-    "uuid": "4e36e415-af6f-4cf9-a7f5-bf709e69c68c",
-    "resources": {
-        "media": [
-            {
-                "name": "IMAGE_APP_ICON",
-                "type": "png",
-                "menuIcon": true,
-                "file": "images/icon_pebble_term_watch_small.png"
-            },
-            {
-                "name": "IMAGE_BLUETOOTH",
-                "type": "png",
-                "file": "images/icon_bluetooth.png"
-            },
-            {
-                "name": "IMAGE_BACKGROUND_INVERT",
-                "type": "png",
-                "file": "images/background-image-invert.png"
-            },
-            {
-                "name": "IMAGE_BACKGROUND",
-                "type": "png",
-                "file": "images/background-image.png"
-            },
-            {
-                "name": "IMAGE_BRANDING_MASK_INVERT",
-                "type": "png",
-                "file": "images/branding-mask-invert.png"
-            },
-            {
-                "name": "IMAGE_BRANDING_MASK",
-                "type": "png",
-                "file": "images/branding-mask.png"
-            },
-            {
-                "name": "IMAGE_TINY_PERCENT",
-                "type": "png",
-                "file": "images/tiny_percent.png"
-            },
-            {
-                "name": "IMAGE_TINY_9",
-                "type": "png",
-                "file": "images/tiny_9.png"
-            },
-            {
-                "name": "IMAGE_TINY_8",
-                "type": "png",
-                "file": "images/tiny_8.png"
-            },
-            {
-                "name": "IMAGE_TINY_7",
-                "type": "png",
-                "file": "images/tiny_7.png"
-            },
-            {
-                "name": "IMAGE_TINY_6",
-                "type": "png",
-                "file": "images/tiny_6.png"
-            },
-            {
-                "name": "IMAGE_TINY_5",
-                "type": "png",
-                "file": "images/tiny_5.png"
-            },
-            {
-                "name": "IMAGE_TINY_4",
-                "type": "png",
-                "file": "images/tiny_4.png"
-            },
-            {
-                "name": "IMAGE_TINY_3",
-                "type": "png",
-                "file": "images/tiny_3.png"
-            },
-            {
-                "name": "IMAGE_TINY_2",
-                "type": "png",
-                "file": "images/tiny_2.png"
-            },
-            {
-                "name": "IMAGE_TINY_1",
-                "type": "png",
-                "file": "images/tiny_1.png"
-            },
-            {
-                "name": "IMAGE_TINY_0",
-                "type": "png",
-                "file": "images/tiny_0.png"
-            },
-            {
-                "name": "IMAGE_BATTERY_CHARGE",
-                "type": "png",
-                "file": "images/icon_battery_charge.png"
-            },
-            {
-                "name": "IMAGE_BATTERY",
-                "type": "png",
-                "file": "images/icon_battery.png"
-            },
-            {
-                "name": "FONT_DROID_13",
-                "type": "font",
-                "file": "fonts/DroidSansMono.ttf"
-            }
-        ]
-    },
+    "longName": "Pebble Term Watch",
+    "versionCode": 1,
+    "shortName": "Pebble Term",
     "capabilities": [
         "configurable"
     ],
-    "companyName": "polygon planet",
-    "shortName": "Pebble Term",
-    "longName": "Pebble Term Watch",
+    "resources": {
+        "media": [
+            {
+                "type": "png",
+                "file": "images/icon_pebble_term_watch_small.png",
+                "name": "IMAGE_APP_ICON",
+                "menuIcon": true
+            },
+            {
+                "type": "png",
+                "file": "images/icon_bluetooth.png",
+                "name": "IMAGE_BLUETOOTH"
+            },
+            {
+                "type": "png",
+                "file": "images/background-image-invert.png",
+                "name": "IMAGE_BACKGROUND_INVERT"
+            },
+            {
+                "type": "png",
+                "file": "images/background-image.png",
+                "name": "IMAGE_BACKGROUND"
+            },
+            {
+                "type": "png",
+                "file": "images/branding-mask-invert.png",
+                "name": "IMAGE_BRANDING_MASK_INVERT"
+            },
+            {
+                "type": "png",
+                "file": "images/branding-mask.png",
+                "name": "IMAGE_BRANDING_MASK"
+            },
+            {
+                "type": "png",
+                "file": "images/tiny_percent.png",
+                "name": "IMAGE_TINY_PERCENT"
+            },
+            {
+                "type": "png",
+                "file": "images/tiny_9.png",
+                "name": "IMAGE_TINY_9"
+            },
+            {
+                "type": "png",
+                "file": "images/tiny_8.png",
+                "name": "IMAGE_TINY_8"
+            },
+            {
+                "type": "png",
+                "file": "images/tiny_7.png",
+                "name": "IMAGE_TINY_7"
+            },
+            {
+                "type": "png",
+                "file": "images/tiny_6.png",
+                "name": "IMAGE_TINY_6"
+            },
+            {
+                "type": "png",
+                "file": "images/tiny_5.png",
+                "name": "IMAGE_TINY_5"
+            },
+            {
+                "type": "png",
+                "file": "images/tiny_4.png",
+                "name": "IMAGE_TINY_4"
+            },
+            {
+                "type": "png",
+                "file": "images/tiny_3.png",
+                "name": "IMAGE_TINY_3"
+            },
+            {
+                "type": "png",
+                "file": "images/tiny_2.png",
+                "name": "IMAGE_TINY_2"
+            },
+            {
+                "type": "png",
+                "file": "images/tiny_1.png",
+                "name": "IMAGE_TINY_1"
+            },
+            {
+                "type": "png",
+                "file": "images/tiny_0.png",
+                "name": "IMAGE_TINY_0"
+            },
+            {
+                "type": "png",
+                "file": "images/icon_battery_charge.png",
+                "name": "IMAGE_BATTERY_CHARGE"
+            },
+            {
+                "type": "png",
+                "file": "images/icon_battery.png",
+                "name": "IMAGE_BATTERY"
+            },
+            {
+                "type": "font",
+                "file": "fonts/DroidSansMono.ttf",
+                "name": "FONT_DROID_13"
+            }
+        ]
+    },
+    "versionLabel": "1.0.7",
     "watchapp": {
         "watchface": true
     },
-    "versionCode": 1,
+    "uuid": "4e36e415-af6f-4cf9-a7f5-bf709e69c68c",
     "appKeys": {
-        "typingAnimation": 1,
         "msgType": 5,
+        "feedTitle": 6,
+        "typingAnimation": 1,
         "feedUrl": 4,
         "timezoneOffset": 2,
-        "feedTitle": 6,
+        "feedVibe": 7,
         "feedInterval": 8,
         "feedEnabled": 3,
-        "feedVibe": 7,
         "bluetoothVibe": 0
     },
-    "versionLabel": "1.0.6"
+    "companyName": "polygon planet"
 }

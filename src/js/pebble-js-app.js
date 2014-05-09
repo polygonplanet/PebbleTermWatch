@@ -571,10 +571,13 @@ Lifecycle.prototype = {
 // App Message utility
 var AppMessage = exports.AppMessage = {
   RETRY_DELAY: 1000,
-  RETRY_EXPIRE: 5 * 1000,
+  RETRY_EXPIRE: 10 * 1000,
+  // NACK handler timeout
+  SEND_TIMEOUT: 3 * 1000,
 
   queue: [],
   timers: Object.create(null),
+  transactionId: 0,
   transactions: Object.create(null),
   processing: false,
 
@@ -602,8 +605,13 @@ var AppMessage = exports.AppMessage = {
         return;
       }
 
+      var passed = false;
+
       var ackHandler = function(ev) {
-        var id = ev.data.transactionId;
+        passed = true;
+        //var id = ev.data.transactionId;
+        var id = AppMessage.transactionId;
+
         AppMessage.queue.shift();
         delete AppMessage.transactions[id];
         AppMessage.processing = false;
@@ -611,19 +619,48 @@ var AppMessage = exports.AppMessage = {
       };
 
       var nackHandler = function(ev) {
-        var id = ev.data.transactionId;
+        passed = true;
+
+        //var id = ev.data.transactionId;
+        var id = AppMessage.transactionId;
         AppMessage.transactions[id] = id;
         retry();
       };
 
-      var send = function() {
+      var send = function(inRetry) {
         AppMessage.processing = true;
         AppMessage.queue.push({
           context: context,
           message: msg,
           time: Date.now()
         });
-        Pebble.sendAppMessage.apply(Pebble, [msg, ackHandler, nackHandler]);
+
+        if (!inRetry) {
+          AppMessage.transactionId++;
+        }
+
+        // Pebble.sendAppMessage nackHandler does not work in SDK 2.1?
+        Pebble.sendAppMessage(msg, ackHandler);
+
+        var startTime = Date.now();
+        var timeout = false;
+
+        till(function() {
+          if (passed) {
+            return true;
+          }
+
+          if (Date.now() - startTime > AppMessage.SEND_TIMEOUT) {
+            timeout = true;
+            return true;
+          }
+
+          return false;
+        }).then(function() {
+          if (timeout) {
+            nackHandler();
+          }
+        });
       };
 
       var retry = function() {
@@ -645,7 +682,7 @@ var AppMessage = exports.AppMessage = {
 
           var id = setTimeout(function() {
             delete AppMessage.timers[id];
-            send();
+            send(true);
           }, AppMessage.RETRY_DELAY);
 
           AppMessage.timers[id] = id;
