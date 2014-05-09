@@ -15,11 +15,33 @@
       -webkit-transform: scale(2, 2);
       transform: scale(2, 2);
     }
+
+    label.disabled {
+      color: #aaa;
+    }
+
+    .settings-container {
+      display: none;
+    }
+
+    .loading {
+      margin: 1em auto;
+      padding: 1em;
+      font-size: 16px;
+    }
+
+    .loading:after {
+      content: "Loading...";
+    }
     </style>
   </head>
 
   <body>
-    <div class="container">
+    <div class="container loading-container">
+      <div class="loading">
+      </div>
+    </div>
+    <div class="container settings-container">
       <h2>
         Pebble Term Watch
       </h2>
@@ -55,44 +77,46 @@
         </div>
       </div>
       <hr>
-      <div class="form-group feed-input-group">
-        <label>
-          Feed fetch interval:
-        </label>
-        <div class="feedInterval-group">
-          <label class="radio">
-            <input type="radio" name="feedInterval" value="300">
-            5 minutes
+      <div class="feed-input-container">
+        <div class="form-group feed-input-group">
+          <label>
+            Feed fetch interval (Optional):
           </label>
-          <label class="radio">
-            <input type="radio" name="feedInterval" value="600">
-            10 minutes
+          <div class="feedInterval-group">
+            <label class="radio">
+              <input type="radio" name="feedInterval" value="300">
+              5 minutes
+            </label>
+            <label class="radio">
+              <input type="radio" name="feedInterval" value="600">
+              10 minutes
+            </label>
+            <label class="radio">
+              <input type="radio" name="feedInterval" value="900"  class="feedInterval-default" checked="checked">
+              15 minutes
+            </label>
+            <label class="radio">
+              <input type="radio" name="feedInterval" value="1800">
+              30 minutes
+            </label>
+            <label class="radio">
+              <input type="radio" name="feedInterval" value="3600">
+              1 hour
+            </label>
+          </div>
+        </div>
+        <hr>
+        <div class="form-group feed-input-group">
+          <label>
+            Vibrate when receive new Feed (Optional):
           </label>
-          <label class="radio">
-            <input type="radio" name="feedInterval" value="900"  class="feedInterval-default" checked="checked">
-            15 minutes
-          </label>
-          <label class="radio">
-            <input type="radio" name="feedInterval" value="1800">
-            30 minutes
-          </label>
-          <label class="radio">
-            <input type="radio" name="feedInterval" value="3600">
-            1 hour
+          <label class="checkbox">
+            <input id="feedVibe" type="checkbox">
+            ON
           </label>
         </div>
+        <hr>
       </div>
-      <hr>
-      <div class="form-group feed-input-group">
-        <label>
-          Vibrate when receive new Feed:
-        </label>
-        <label class="checkbox">
-          <input id="feedVibe" type="checkbox">
-          ON
-        </label>
-      </div>
-      <hr>
       <div class="submit-group group-buttons">
         <button class="btn button-submit btn-primary btn-lg">
           Save
@@ -314,11 +338,13 @@
       });
 
 
+      var loaded = false;
+
       setTimeout(function checkFields() {
         var val = $('#feedUrl').val();
         var group = $('.feed-input-group input, .feed-input-group label');
-
-        group.prop('disabled', !store.feedUrl.fix(val));
+        //var disabled = !store.feedUrl.fix(val);
+        //group.prop('disabled', disabled);
 
         $('input[type=checkbox], input[type=radio]').each(function() {
           if (!$(this).prop('disabled') && $(this).prop('checked')) {
@@ -327,6 +353,13 @@
             $(this).parent().removeClass('field-selected');
           }
         });
+
+        if (!loaded) {
+          loaded = true;
+
+          $('.loading-container').hide();
+          $('.settings-container').show();
+        }
 
         setTimeout(checkFields, 64);
       }, 64);
