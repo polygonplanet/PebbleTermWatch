@@ -768,7 +768,8 @@ static void term_sync_feed_end(void) {
 
   feed_title_ready = true;
 
-  if (strlen(feed_buffer) > 0
+  if (settings.FeedVibe
+      && strlen(feed_buffer) > 0
       && strlen(feed_prev_buffer) > 0
       && strncmp(feed_buffer, feed_prev_buffer, strlen(feed_buffer)) != 0) {
 
