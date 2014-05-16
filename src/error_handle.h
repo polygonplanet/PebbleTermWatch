@@ -19,7 +19,6 @@ char *translate_error(AppMessageResult result) {
   }
 }
 */
-
 static void sync_error_callback(DictionaryResult dict_error,
                                 AppMessageResult app_message_error,
                                 void *context) {

@@ -17,7 +17,7 @@
 #define SETTINGS_KEY (61)
 
 static AppSync sync;
-static uint8_t sync_buffer[128];
+static uint8_t sync_buffer[320];
 
 // layers
 static Window *window;
@@ -119,10 +119,9 @@ const int TINY_IMAGE_RESOURCE_IDS[] = {
 };
 
 // Feeds
-#define MSG_TYPE_FEED_FETCHED ((uint8_t)4)
-#define MSG_TYPE_FEED_TITLE_START ((uint8_t)5)
-#define MSG_TYPE_FEED_TITLE_END ((uint8_t)6)
-#define MSG_TYPE_VIBE ((uint8_t)7)
+#define MSG_TYPE_PING ((uint8_t)0)
+#define MSG_TYPE_FEED_READY ((uint8_t)1)
+#define MSG_TYPE_FEED_TITLE ((uint8_t)2)
 
 // time until to start marquee (seconds)
 #define FEED_WAIT_TIME_LIMIT (5)
@@ -138,6 +137,7 @@ const int TINY_IMAGE_RESOURCE_IDS[] = {
 static char feed_title[18];
 static char feed_prev_title[18];
 static char feed_buffer[192];
+static char feed_prev_buffer[192];
 
 static int feed_index;
 static int feed_lastindex;
@@ -156,7 +156,6 @@ static int feed_append_len = 0;
 #define FEED_APPEND_EMPTY_MAX (10)
 static int feed_append_empty_count = 0;
 
-static bool feed_fetched = false;
 static bool feed_enabled_initialized = false;
 static bool feed_first_displayed = false;
 
@@ -296,10 +295,17 @@ void battery_layer_update_callback(Layer *me, GContext* ctx) {
 }
 
 // bluetooth
-static void toggle_bluetooth_icon(bool connected) {
-  if (appStarted && !connected && settings.BluetoothVibe) {
+static void bluetooth_connection_timer() {
+  if (settings.BluetoothVibe && !bluetooth_connection_service_peek()) {
     // vibe on bluetooth disconnect
     vibes_long_pulse();
+  }
+}
+
+static void toggle_bluetooth_icon(bool connected) {
+  if (appStarted && !connected && settings.BluetoothVibe) {
+    // Wait a few seconds for connection blink
+    app_timer_register(3000, bluetooth_connection_timer, 0);
   }
   layer_set_hidden(bitmap_layer_get_layer(bluetooth_layer), !connected);
 }
@@ -431,30 +437,13 @@ static bool send_msg(Tuplet t) {
 }
 
 static void ping(void) {
-  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, 0);
-
-  send_msg(type_tuplet);
-}
-
-static void send_close_msg(void) {
-  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, 1);
-
-  send_msg(type_tuplet);
-}
-
-static void fetch_feed(void) {
-  if (!can_fetch_feed) {
-    return;
-  }
-  can_fetch_feed = false;
-
-  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, 2);
+  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, MSG_TYPE_PING);
 
   send_msg(type_tuplet);
 }
 
 static bool ready_feed(void) {
-  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, (uint8_t)3);
+  Tuplet type_tuplet = TupletInteger(MSG_TYPE_KEY, MSG_TYPE_FEED_READY);
 
   return send_msg(type_tuplet);
 }
@@ -739,6 +728,10 @@ static void term_sync_feed_start(void) {
   feed_append_len = 0;
   feed_append_empty_count = 0;
 
+  memset(feed_prev_buffer, 0, sizeof(feed_prev_buffer));
+
+  strncpy(feed_prev_buffer, feed_buffer, FEED_MAX_TITLE_LEN);
+
   memset(feed_buffer, 0, sizeof(feed_buffer));
   memset(feed_prev_title, 0, sizeof(feed_prev_title));
 
@@ -775,51 +768,21 @@ static void term_sync_feed_end(void) {
 
   feed_title_ready = true;
 
-  //FIXME: Vibration timing
-  //if (feed_first_displayed && settings.FeedVibe) {
-  //  // Vibe
-  //  term_vibes_short_pulse();
-  //}
-}
+  if (strlen(feed_buffer) > 0
+      && strlen(feed_prev_buffer) > 0
+      && strncmp(feed_buffer, feed_prev_buffer, strlen(feed_buffer)) != 0) {
 
-static void sync_message_type(uint8_t msg_type) {
-  switch (msg_type) {
-    case MSG_TYPE_FEED_FETCHED:
-      break;
-    case MSG_TYPE_FEED_TITLE_START:
-      term_sync_feed_start();
-      break;
-    case MSG_TYPE_FEED_TITLE_END:
-      term_sync_feed_end();
-      break;
-    case MSG_TYPE_VIBE:
-      if (feed_first_displayed && settings.FeedVibe && feed_title_ready) {
-        feed_wait_time = FEED_WAIT_TIME_LIMIT;
-        feed_index = 0;
-        // Vibe
-        term_vibes_short_pulse();
-      }
-      break;
+    // Vibe
+    term_vibes_short_pulse();
   }
 }
 
-static void term_sync_feed_title_append(const Tuple* new_tuple) {
+static void term_sync_feed_end_timer() {
+  term_sync_feed_end();
+}
+
+static void term_sync_feed_title_once(const Tuple* new_tuple) {
   if (!feed_title_sending) {
-    return;
-  }
-
-  if (feed_append_len > 0 && strlen(new_tuple->value->cstring) == 0) {
-    if (++feed_append_empty_count > FEED_APPEND_EMPTY_MAX) {
-      feed_append_empty_count = 0;
-      feed_append_len = FEED_MAX_TITLE_LEN;
-      term_sync_feed_end();
-      return;
-    }
-  }
-
-  if (feed_append_len + FEED_TITLE_CHUNK_SIZE > FEED_MAX_TITLE_LEN) {
-    feed_append_len = FEED_MAX_TITLE_LEN;
-    term_sync_feed_end();
     return;
   }
 
@@ -827,22 +790,19 @@ static void term_sync_feed_title_append(const Tuple* new_tuple) {
     return;
   }
 
-  feed_append_empty_count = 0;
+  strncpy(feed_buffer, new_tuple->value->cstring, FEED_MAX_TITLE_LEN);
 
-  char s[FEED_TITLE_CHUNK_SIZE + 1];
+  //TODO: loading
+  app_timer_register(3 * TYPE_DELTA, term_sync_feed_end_timer, 0);
+}
 
-  strncpy(s, new_tuple->value->cstring, FEED_TITLE_CHUNK_SIZE);
-  s[FEED_TITLE_CHUNK_SIZE] = '\0';
 
-  // Skip duplicate title
-  if (strncmp(s, feed_prev_title, FEED_TITLE_CHUNK_SIZE) == 0) {
-    return;
+static void sync_message_type(uint8_t msg_type) {
+  switch (msg_type) {
+    case MSG_TYPE_FEED_TITLE:
+      term_sync_feed_start();
+      break;
   }
-
-  strncpy(feed_prev_title, s, FEED_TITLE_CHUNK_SIZE);
-  strncat(feed_buffer, s, FEED_TITLE_CHUNK_SIZE);
-
-  feed_append_len += FEED_TITLE_CHUNK_SIZE;
 }
 
 static void term_sync_feed_enabled(uint8_t value) {
@@ -865,19 +825,19 @@ static void term_sync_feed_enabled(uint8_t value) {
     if (settings.FeedEnabled != prevFeedEnabled) {
 
       //TODO: reload
-      if (settings.FeedEnabled
-          && !prevFeedEnabled && !feed_title_sending) {
+      //if (settings.FeedEnabled
+      //    && !prevFeedEnabled && !feed_title_sending) {
+      //
+      //  strncpy(feed_buffer, "Please reload    ", 17);
+      //  strncpy(feed_title, feed_buffer, 17);
+      //
+      //  text_layer_set_text(feed_layer, feed_title);
+      //  feed_index = 0;
+      //  feed_title_ready = true;
+      //  ready_feed();
+      //}
 
-        strncpy(feed_buffer, "Please reload    ", 17);
-        strncpy(feed_title, feed_buffer, 17);
-
-        text_layer_set_text(feed_layer, feed_title);
-        feed_index = 0;
-        feed_title_ready = true;
-
-        ready_feed();
-      }
-
+      ready_feed();
       reset_next_tick = true;
       reset_animation();
     }
@@ -921,7 +881,7 @@ static void sync_tuple_changed_callback(const uint32_t key,
       sync_message_type(new_tuple->value->uint8);
       break;
     case FEED_TITLE_KEY:
-      term_sync_feed_title_append(new_tuple);
+      term_sync_feed_title_once(new_tuple);
       break;
     case FEED_VIBE_KEY:
       settings.FeedVibe = new_tuple->value->uint8;
@@ -929,15 +889,6 @@ static void sync_tuple_changed_callback(const uint32_t key,
     case FEED_INTERVAL_KEY:
       break;
   }
-}
-
-static void in_dropped_handler(AppMessageResult reason, void *context) {
-}
-
-static void out_failed_handler(DictionaryIterator *failed, AppMessageResult reason, void *context) {
-}
-
-static void in_received_handler(DictionaryIterator *iter, void *context) {
 }
 
 static void update_display_time() {
@@ -1078,6 +1029,7 @@ static void window_load(Window *window) {
 
   text_layer_set_text(feed_layer, "");
   layer_set_hidden(text_layer_get_layer(feed_layer), true);
+  text_layer_set_text(feed_layer, "Loading...");
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(feed_layer));
 
   if (!tickRegistered) {
@@ -1125,7 +1077,7 @@ static void init(void) {
   }
   window_layer = window_get_root_layer(window);
 
-  const int inbound_size = 128;
+  const int inbound_size = 256;
   const int outbound_size = 64;
   app_message_open(inbound_size, outbound_size);
 
@@ -1199,8 +1151,8 @@ static void init(void) {
     TupletInteger(TIMEZONE_OFFSET_KEY, settings.TimezoneOffset),
     TupletInteger(FEED_ENABLED_KEY, settings.FeedEnabled),
     TupletCString(FEED_URL_KEY, ""),
-    TupletInteger(MSG_TYPE_KEY, (uint8_t)0),
-    TupletCString(FEED_TITLE_KEY, "Loading.........."),
+    TupletInteger(MSG_TYPE_KEY, MSG_TYPE_PING),
+    TupletCString(FEED_TITLE_KEY, "Loading..."),
     TupletInteger(FEED_VIBE_KEY, settings.FeedVibe),
     TupletInteger(FEED_INTERVAL_KEY, (uint8_t)0)
   };
