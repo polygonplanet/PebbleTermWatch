@@ -252,11 +252,11 @@
           var time = (v - 0) || 0;
           return Math.max(5 * 60, Math.min(60 * 60, time));
         }
-      },
+      }
     };
 
 
-    clearStorage = function() {
+    var clearStorage = function() {
       var key;
 
       for (var i = 0, len = window.localStorage.length; i < len; i++) {
